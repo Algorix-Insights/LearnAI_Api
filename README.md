@@ -34,6 +34,23 @@ El backend maneja reglas de negocio sensibles y varias integraciones externas. S
 3. `domain` aplica reglas y validaciones de negocio.
 4. `infrastructure` persiste o consulta sistemas externos.
 
+## Git Flow
+Se usa **git flow** para ordenar el trabajo por etapas y reducir riesgo en cambios que afectan varias capas del backend.
+
+### Por que usarlo
+- **Aisla features**: cada funcionalidad entra en una rama propia, sin mezclar trabajo incompleto con `main`.
+- **Protege releases**: `develop` concentra integracion estable antes de promover cambios a produccion.
+- **Facilita hotfixes**: correcciones criticas salen rapido desde una rama dedicada sin romper el flujo normal.
+- **Mejora revision**: los PR quedan mas pequenos y mas faciles de auditar.
+- **Reduce regresiones**: separa desarrollo, preparacion de release y correccion urgente.
+
+### Ramificaciones basicas
+- `main`: codigo listo para produccion.
+- `develop`: integracion continua del trabajo aprobado.
+- `feature/*`: nuevas funcionalidades.
+- `release/*`: estabilizacion previa a salida.
+- `hotfix/*`: correcciones urgentes sobre produccion.
+
 ## Convenciones tecnicas
 - Mantener `domain` libre de dependencias de framework.
 - No acceder a ORM o storage desde `application` directamente.
