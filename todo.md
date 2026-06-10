@@ -66,5 +66,16 @@
 - [ ] Database Schema Setup (PostgreSQL + pgvector).
 - [ ] Vector Embedding Integration (OpenAI/Ollama/HuggingFace).
 - [ ] RAG Engine (Chunking, Retrieval).
-- [ ] Logging & Traceability (Transaction IDs, audit logs).
-- [ ] Security (JWT, Scoped access, File restrictions).
+- [ ] Supabase Configuration & Integration.
+- [ ] Global Logging System (Request ID, Traceability).
+- [ ] Rate Limiting (Prevent abuse).
+
+## 7. Security & Protection
+- [ ] SQL Injection Protection (Parameterized queries/ORM).
+- [ ] XSS Protection (Output sanitization).
+- [ ] CSRF Protection (Standard middleware).
+- [ ] IDOR Protection (Resource ownership validation).
+- [ ] Secure Authentication (JWT, MFA, Password hashing).
+- [ ] Configuration Protection (Env vars, secrets management).
+- [ ] Security Headers (HSTS, CSP, X-Frame-Options).
+- [ ] HTTPS Enforcement.
