@@ -62,6 +62,36 @@ Se usa **git flow** para ordenar el trabajo por etapas y reducir riesgo en cambi
 - Configurar variables en `.env`.
 - Ejecutar pruebas y lint antes de abrir PR.
 
+## Guía de Inicio
+
+### Requisitos
+- Python 3.12+
+- Pip o similar
+
+### Instalación
+1. Clonar el repositorio.
+2. Crear un entorno virtual:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # En Windows: venv\Scripts\activate
+   ```
+3. Instalar dependencias:
+   ```bash
+   pip install .
+   ```
+
+### Ejecución
+Para iniciar el servidor de desarrollo:
+```bash
+uvicorn src.main:app --reload
+```
+La API estará disponible en `http://127.0.0.1:8000`. Puedes acceder a la documentación interactiva en `/docs`.
+
+### Pruebas
+```bash
+pytest
+```
+
 ## Notas utiles
 - El backend debe exponer health checks.
 - La ingesta de archivos debe ser asíncrona si el volumen crece.
