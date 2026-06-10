@@ -1,0 +1,31 @@
+flowchart TD
+    A[Usuario] --> B{Contexto de trabajo}
+
+    B -->|Notebook personal| C[Contexto del notebook]
+    C --> C1[Título]
+    C --> C2[Descripción]
+    C --> C3[Notas]
+    C --> C4[Flashcards]
+    C --> C5[Resúmenes]
+    C --> C6[Resultados de exámenes]
+    C --> C7[Progreso]
+
+    C --> D[documents_chunks]
+    D --> E[PersonalRagEngine]
+
+    B -->|Sala de estudio| F[Contexto de sala]
+    F --> F1[Nombre]
+    F --> F2[Descripción]
+    F --> F3[Miembros]
+    F --> F4[Roles y permisos]
+    F --> F5[Canales]
+    F --> F6[Mensajes recientes]
+    F --> F7[Resúmenes colaborativos]
+
+    F --> G[study_rooms_documents_chunks]
+    G --> H[StudyRoomRagEngine]
+
+    E --> I[Agente IA]
+    H --> I
+
+    I --> J[Respuesta o recurso generado]

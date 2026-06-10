@@ -1,0 +1,409 @@
+erDiagram
+
+    users {
+        uuid user_id PK
+        varchar full_name
+        varchar email UK
+        varchar password_hash
+        varchar avatar_url
+        varchar role
+        varchar account_status
+        varchar preferred_language
+        varchar timezone
+        timestamptz last_login_at
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    notebooks_tags {
+        uuid tag_id PK
+        uuid user_id FK
+        varchar name
+        varchar color
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    notebooks {
+        uuid notebook_id PK
+        uuid user_id FK
+        uuid tag_id FK
+        varchar title
+        text description
+        varchar visibility
+        varchar status
+        jsonb flashcards
+        int total_documents
+        int total_flashcards
+        int mastered_topics_count
+        int pending_topics_count
+        numeric average_score
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    documents {
+        uuid document_id PK
+        uuid notebook_id FK
+        uuid user_id FK
+        varchar title
+        varchar original_filename
+        varchar file_type
+        bigint file_size_bytes
+        varchar storage_path
+        varchar processing_status
+        text processing_error
+        int total_pages
+        int total_chunks
+        varchar checksum_sha256
+        timestamptz uploaded_at
+        timestamptz processed_at
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    documents_chunks {
+        uuid chunk_id PK
+        uuid document_id FK
+        int chunk_index
+        int page_start
+        int page_end
+        text content
+        vector embedding
+        int token_count
+        varchar embedding_model
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    summaries {
+        uuid summary_id PK
+        uuid notebook_id FK
+        uuid user_id FK
+        varchar title
+        text content
+        varchar summary_type
+        varchar model_name
+        int source_documents_count
+        int source_chunks_count
+        int token_input
+        int token_output
+        numeric latency_ms
+        timestamptz generated_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    chat_ai_notebooks {
+        uuid chat_id PK
+        uuid notebook_id FK
+        uuid user_id FK
+        varchar title
+        varchar status
+        varchar model_name
+        numeric temperature
+        int max_context_chunks
+        timestamptz started_at
+        timestamptz last_message_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    chat_ai_notebooks_messages {
+        uuid message_id PK
+        uuid chat_id FK
+        uuid user_id FK
+        varchar role
+        text content
+        varchar model_name
+        jsonb retrieved_chunks
+        jsonb citations
+        int token_input
+        int token_output
+        numeric latency_ms
+        timestamptz created_at
+    }
+
+    base_prompt {
+        uuid prompt_id PK
+        uuid user_id FK
+        varchar prompt_key UK
+        varchar module
+        text system_prompt
+        text developer_prompt
+        varchar model_name
+        numeric temperature
+        int max_tokens
+        boolean is_active
+        int version
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    mocks_tests {
+        uuid mock_test_id PK
+        uuid notebook_id FK
+        uuid user_id FK
+        varchar title
+        varchar test_type
+        varchar difficulty
+        int total_questions
+        jsonb questions
+        varchar model_name
+        int token_input
+        int token_output
+        numeric latency_ms
+        varchar status
+        timestamptz generated_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    test_results {
+        uuid result_id PK
+        uuid mock_test_id FK
+        uuid user_id FK
+        numeric score
+        int total_questions
+        int correct_answers
+        int incorrect_answers
+        int skipped_answers
+        int time_spent_seconds
+        jsonb user_answers
+        jsonb grading_details
+        varchar result_status
+        timestamptz started_at
+        timestamptz completed_at
+        timestamptz created_at
+    }
+
+    logs {
+        uuid log_id PK
+        uuid user_id FK
+        uuid notebook_id FK
+        uuid document_id FK
+        uuid request_id
+        uuid correlation_id
+        uuid transaction_id
+        varchar trace_id
+        varchar span_id
+        varchar parent_span_id
+        varchar log_level
+        varchar event_type
+        varchar http_method
+        varchar endpoint
+        int status_code
+        numeric latency_ms
+        varchar service_name
+        varchar module_name
+        varchar action_name
+        varchar entity_type
+        uuid entity_id
+        varchar source_ip
+        varchar user_agent
+        text message
+        jsonb request_payload
+        jsonb response_payload
+        jsonb error_details
+        timestamptz created_at
+    }
+
+    study_rooms {
+        uuid study_room_id PK
+        uuid owner_user_id FK
+        varchar name
+        text description
+        varchar visibility
+        varchar access_code UK
+        varchar status
+        int members_count
+        int documents_count
+        int summaries_count
+        numeric average_score
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    study_rooms_members {
+        uuid study_room_id PK, FK
+        uuid user_id PK, FK
+        varchar member_role
+        varchar member_status
+        boolean can_upload_documents
+        boolean can_create_channels
+        boolean can_generate_summaries
+        boolean can_use_ai_chat
+        timestamptz joined_at
+        timestamptz last_seen_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    study_rooms_documents {
+        uuid study_room_document_id PK
+        uuid study_room_id FK
+        uuid uploaded_by_user_id FK
+        varchar title
+        varchar original_filename
+        varchar file_type
+        bigint file_size_bytes
+        varchar storage_path
+        varchar processing_status
+        text processing_error
+        int total_pages
+        int total_chunks
+        varchar checksum_sha256
+        timestamptz uploaded_at
+        timestamptz processed_at
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    study_rooms_documents_chunks {
+        uuid chunk_id PK
+        uuid study_room_document_id FK
+        int chunk_index
+        int page_start
+        int page_end
+        text content
+        vector embedding
+        int token_count
+        varchar embedding_model
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    study_rooms_channels {
+        uuid channel_id PK
+        uuid study_room_id FK
+        uuid created_by_user_id FK
+        varchar name
+        text description
+        varchar channel_type
+        varchar status
+        boolean is_private
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    study_rooms_channels_messages {
+        uuid message_id PK
+        uuid channel_id FK
+        uuid study_room_id FK
+        uuid user_id FK
+        text content
+        varchar message_type
+        jsonb attachments
+        jsonb mentions
+        boolean is_edited
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    study_rooms_chat_ai {
+        uuid chat_id PK
+        uuid study_room_id FK
+        uuid channel_id FK
+        uuid created_by_user_id FK
+        varchar title
+        varchar status
+        varchar model_name
+        numeric temperature
+        int max_context_chunks
+        timestamptz started_at
+        timestamptz last_message_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    study_rooms_chat_ai_messages {
+        uuid message_id PK
+        uuid chat_id FK
+        uuid study_room_id FK
+        uuid user_id FK
+        varchar role
+        text content
+        varchar model_name
+        jsonb retrieved_chunks
+        jsonb citations
+        int token_input
+        int token_output
+        numeric latency_ms
+        timestamptz created_at
+    }
+
+    study_rooms_summaries {
+        uuid summary_id PK
+        uuid study_room_id FK
+        uuid generated_by_user_id FK
+        varchar title
+        text content
+        varchar summary_type
+        varchar model_name
+        int source_documents_count
+        int source_chunks_count
+        int token_input
+        int token_output
+        numeric latency_ms
+        timestamptz generated_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    users ||--o{ notebooks : owns
+    users ||--o{ notebooks_tags : creates
+    notebooks_tags ||--o{ notebooks : classifies
+
+    notebooks ||--o{ documents : contains
+    users ||--o{ documents : uploads
+    documents ||--o{ documents_chunks : has
+
+    notebooks ||--o{ summaries : generates
+    users ||--o{ summaries : owns
+
+    notebooks ||--o{ chat_ai_notebooks : has
+    users ||--o{ chat_ai_notebooks : starts
+    chat_ai_notebooks ||--o{ chat_ai_notebooks_messages : contains
+    users ||--o{ chat_ai_notebooks_messages : sends
+
+    notebooks ||--o{ mocks_tests : generates
+    users ||--o{ mocks_tests : owns
+    mocks_tests ||--o{ test_results : produces
+    users ||--o{ test_results : completes
+
+    users ||--o{ base_prompt : configures
+
+    users ||--o{ logs : triggers
+    notebooks ||--o{ logs : traces
+    documents ||--o{ logs : traces
+
+    users ||--o{ study_rooms : owns
+    study_rooms ||--o{ study_rooms_members : has
+    users ||--o{ study_rooms_members : joins
+
+    study_rooms ||--o{ study_rooms_documents : contains
+    users ||--o{ study_rooms_documents : uploads
+    study_rooms_documents ||--o{ study_rooms_documents_chunks : has
+
+    study_rooms ||--o{ study_rooms_channels : has
+    users ||--o{ study_rooms_channels : creates
+    study_rooms_channels ||--o{ study_rooms_channels_messages : contains
+    study_rooms ||--o{ study_rooms_channels_messages : groups
+    users ||--o{ study_rooms_channels_messages : sends
+
+    study_rooms ||--o{ study_rooms_chat_ai : has
+    study_rooms_channels ||--o{ study_rooms_chat_ai : hosts
+    users ||--o{ study_rooms_chat_ai : starts
+    study_rooms_chat_ai ||--o{ study_rooms_chat_ai_messages : contains
+    study_rooms ||--o{ study_rooms_chat_ai_messages : groups
+    users ||--o{ study_rooms_chat_ai_messages : sends
+
+    study_rooms ||--o{ study_rooms_summaries : generates
+    users ||--o{ study_rooms_summaries : requests

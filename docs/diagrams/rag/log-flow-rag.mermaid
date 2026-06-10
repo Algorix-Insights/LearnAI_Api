@@ -1,0 +1,35 @@
+flowchart TD
+    A[Inicio de operación RAG] --> B[Generar request_id]
+    B --> C[Generar correlation_id]
+    C --> D[Generar transaction_id]
+    D --> E[Registrar contexto de operación]
+
+    E --> F{Tipo de operación}
+
+    F -->|Carga documento| G[action_name: document_upload]
+    F -->|Procesamiento| H[action_name: document_processing]
+    F -->|Chat IA personal| I[action_name: notebook_question_answering]
+    F -->|Chat IA sala| J[action_name: study_room_question_answering]
+    F -->|Resumen| K[action_name: summary_generation]
+    F -->|Flashcards| L[action_name: flashcards_generation]
+    F -->|Mock test| M[action_name: mock_test_generation]
+
+    G --> N[Guardar evento en logs]
+    H --> N
+    I --> N
+    J --> N
+    K --> N
+    L --> N
+    M --> N
+
+    N --> O[Registrar module_name]
+    O --> P[Registrar entity_type y entity_id]
+    P --> Q[Registrar request_payload]
+    Q --> R[Registrar response_payload]
+    R --> S{Ocurrió error?}
+
+    S -->|Sí| T[Guardar error_details]
+    S -->|No| U[Guardar status_code y latency_ms]
+
+    T --> V[Finalizar trazabilidad]
+    U --> V

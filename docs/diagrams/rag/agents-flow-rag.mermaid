@@ -1,0 +1,41 @@
+flowchart TD
+    A[Solicitud del usuario] --> B{Tipo de solicitud}
+
+    B -->|Pregunta en chat| C[QaAgent]
+    B -->|Resumen| D[SummaryAgent]
+    B -->|Flashcards| E[FlashcardAgent]
+    B -->|Mock test| F[MockTestAgent]
+    B -->|Evaluar examen| G[GradingAgent]
+
+    C --> H{Contexto}
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+
+    H -->|Notebook personal| I[PersonalRagEngine]
+    H -->|Sala de estudio| J[StudyRoomRagEngine]
+
+    I --> K[Consultar documents_chunks]
+    J --> L[Validar study_rooms_members]
+    L --> M[Consultar study_rooms_documents_chunks]
+
+    K --> N[Recuperar chunks relevantes]
+    M --> N
+
+    N --> O[Construir prompt con contexto]
+    O --> P[Ejecutar agente especializado]
+
+    P --> Q{Resultado}
+
+    Q -->|Respuesta chat| R[Guardar en mensajes de chat]
+    Q -->|Resumen| S[Guardar en summaries o study_rooms_summaries]
+    Q -->|Flashcards| T[Guardar en JSONB flashcards]
+    Q -->|Mock test| U[Guardar en mocks_tests]
+    Q -->|Resultado evaluado| V[Guardar en test_results]
+
+    R --> W[Registrar en logs]
+    S --> W
+    T --> W
+    U --> W
+    V --> W

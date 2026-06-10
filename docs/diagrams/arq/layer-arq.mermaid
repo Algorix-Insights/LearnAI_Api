@@ -1,0 +1,78 @@
+flowchart TB
+
+    CLIENT["Cliente Web<br/>Next.js"]
+
+    subgraph BACKEND["Backend FastAPI / Python"]
+        REST["REST Modules<br/>Auth, Uploads, Processing Jobs"]
+        GQL["GraphQL Module<br/>Queries, Mutations, Dashboard"]
+        SECURITY["Security Layer<br/>JWT, RLS, Multi-tenant Permissions"]
+        SERVICES["Domain Services<br/>Notebooks, Documents, Chats, Rooms, Progress"]
+        LOGGING["Logging Service<br/>Trazabilidad"]
+    end
+
+    subgraph RAG["RAG Layer"]
+        PERSONAL_RAG["Personal RAG Engine<br/>documents_chunks"]
+        ROOM_RAG["Study Room RAG Engine<br/>study_rooms_documents_chunks"]
+    end
+
+    subgraph AGENTS["AI Agents"]
+        QA["QaAgent<br/>Preguntas y respuestas"]
+        SUMMARY["SummaryAgent<br/>Resúmenes"]
+        FLASHCARDS["FlashcardAgent<br/>Flashcards"]
+        MOCKS["MockTestAgent<br/>Mock Tests"]
+        GRADING["GradingAgent<br/>Evaluación"]
+    end
+
+    subgraph DATA["Persistencia"]
+        DB["PostgreSQL + pgvector"]
+        STORAGE["Supabase Storage<br/>PDF / TXT"]
+        LOGS["logs"]
+    end
+
+    CLIENT --> REST
+    CLIENT --> GQL
+
+    REST --> SECURITY
+    GQL --> SECURITY
+
+    REST --> SERVICES
+    GQL --> SERVICES
+
+    REST --> STORAGE
+
+    SERVICES --> PERSONAL_RAG
+    SERVICES --> ROOM_RAG
+
+    PERSONAL_RAG --> QA
+    PERSONAL_RAG --> SUMMARY
+    PERSONAL_RAG --> FLASHCARDS
+    PERSONAL_RAG --> MOCKS
+
+    ROOM_RAG --> QA
+    ROOM_RAG --> SUMMARY
+    ROOM_RAG --> FLASHCARDS
+    ROOM_RAG --> MOCKS
+
+    QA --> DB
+    SUMMARY --> DB
+    FLASHCARDS --> DB
+    MOCKS --> DB
+    GRADING --> DB
+
+    PERSONAL_RAG --> DB
+    ROOM_RAG --> DB
+
+    SECURITY --> DB
+
+    REST --> LOGGING
+    GQL --> LOGGING
+    PERSONAL_RAG --> LOGGING
+    ROOM_RAG --> LOGGING
+    QA --> LOGGING
+    SUMMARY --> LOGGING
+    FLASHCARDS --> LOGGING
+    MOCKS --> LOGGING
+    GRADING --> LOGGING
+
+    LOGGING --> LOGS
+    LOGS --> DB

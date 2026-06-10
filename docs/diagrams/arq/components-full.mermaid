@@ -1,0 +1,280 @@
+flowchart TB
+
+    %% =========================
+    %% CLIENTE
+    %% =========================
+    subgraph CLIENT["Cliente / Frontend"]
+        WEB["Next.js Web App"]
+        UI1["Dashboard de progreso"]
+        UI2["Notebooks"]
+        UI3["Chat IA"]
+        UI4["Salas de estudio"]
+        UI5["Recursos generativos"]
+    end
+
+    WEB --> UI1
+    WEB --> UI2
+    WEB --> UI3
+    WEB --> UI4
+    WEB --> UI5
+
+    %% =========================
+    %% API GATEWAY / BACKEND
+    %% =========================
+    subgraph API["Backend Python / FastAPI"]
+        REST["Módulos REST"]
+        GQL["Módulo GraphQL"]
+        AUTH["Auth / JWT / Sesiones"]
+        RLS["Validación multi-tenant / RLS"]
+        LOGS["Servicio de trazabilidad"]
+    end
+
+    WEB -->|REST: auth, upload, processing jobs| REST
+    WEB -->|GraphQL: queries y mutations| GQL
+
+    REST --> AUTH
+    GQL --> AUTH
+
+    AUTH --> RLS
+    REST --> LOGS
+    GQL --> LOGS
+
+    %% =========================
+    %% REST MODULES
+    %% =========================
+    subgraph REST_MOD["Módulos REST"]
+        AUTH_REST["/auth/register /auth/login /auth/logout"]
+        DOC_UPLOAD["Upload documentos personales"]
+        ROOM_DOC_UPLOAD["Upload documentos de sala"]
+        JOBS_PERSONAL["Processing jobs personales"]
+        JOBS_ROOM["Processing jobs colaborativos"]
+        HEALTH["/health"]
+    end
+
+    REST --> AUTH_REST
+    REST --> DOC_UPLOAD
+    REST --> ROOM_DOC_UPLOAD
+    REST --> JOBS_PERSONAL
+    REST --> JOBS_ROOM
+    REST --> HEALTH
+
+    %% =========================
+    %% GRAPHQL MODULES
+    %% =========================
+    subgraph GQL_MOD["Módulos GraphQL"]
+        Q_USER["Queries de usuario"]
+        Q_NOTEBOOKS["Queries / Mutations de notebooks"]
+        Q_CHATS["Queries / Mutations de chats"]
+        Q_RESOURCES["Recursos generativos"]
+        Q_PROGRESS["Dashboard / progreso"]
+        Q_ROOMS["Queries / Mutations de salas"]
+        Q_CHANNELS["Canales y mensajes"]
+    end
+
+    GQL --> Q_USER
+    GQL --> Q_NOTEBOOKS
+    GQL --> Q_CHATS
+    GQL --> Q_RESOURCES
+    GQL --> Q_PROGRESS
+    GQL --> Q_ROOMS
+    GQL --> Q_CHANNELS
+
+    %% =========================
+    %% DOMAIN SERVICES
+    %% =========================
+    subgraph SERVICES["Servicios de dominio"]
+        USER_SERVICE["UserService"]
+        NOTEBOOK_SERVICE["NotebookService"]
+        DOCUMENT_SERVICE["DocumentService"]
+        CHAT_SERVICE["ChatService"]
+        ROOM_SERVICE["StudyRoomService"]
+        RESOURCE_SERVICE["LearningResourceService"]
+        PROGRESS_SERVICE["ProgressService"]
+    end
+
+    GQL_MOD --> SERVICES
+    REST_MOD --> SERVICES
+
+    %% =========================
+    %% MULTI TENANT PERSONAL CONTEXT
+    %% =========================
+    subgraph PERSONAL["Dominio personal / Multi-tenant"]
+        USERS["users"]
+        NOTEBOOKS["notebooks"]
+        DOCUMENTS["documents"]
+        DOC_CHUNKS["documents_chunks"]
+        CHAT_NOTEBOOKS["chat_ai_notebooks"]
+        CHAT_NOTEBOOKS_MSG["chat_ai_notebooks_messages"]
+        SUMMARIES["summaries"]
+        MOCKS["mocks_tests"]
+        RESULTS["test_results"]
+    end
+
+    USERS --> NOTEBOOKS
+    NOTEBOOKS --> DOCUMENTS
+    DOCUMENTS --> DOC_CHUNKS
+    NOTEBOOKS --> CHAT_NOTEBOOKS
+    CHAT_NOTEBOOKS --> CHAT_NOTEBOOKS_MSG
+    NOTEBOOKS --> SUMMARIES
+    NOTEBOOKS --> MOCKS
+    MOCKS --> RESULTS
+
+    %% =========================
+    %% COLLABORATIVE CONTEXT
+    %% =========================
+    subgraph COLLAB["Dominio colaborativo / Salas de estudio"]
+        ROOMS["study_rooms"]
+        MEMBERS["study_rooms_members"]
+        ROOM_DOCS["study_rooms_documents"]
+        ROOM_CHUNKS["study_rooms_documents_chunks"]
+        CHANNELS["study_rooms_channels"]
+        CHANNEL_MSG["study_rooms_channels_messages"]
+        ROOM_AI_CHATS["study_rooms_chat_ai"]
+        ROOM_AI_MSG["study_rooms_chat_ai_messages"]
+        ROOM_SUMMARIES["study_rooms_summaries"]
+    end
+
+    ROOMS --> MEMBERS
+    ROOMS --> ROOM_DOCS
+    ROOM_DOCS --> ROOM_CHUNKS
+    ROOMS --> CHANNELS
+    CHANNELS --> CHANNEL_MSG
+    ROOMS --> ROOM_AI_CHATS
+    ROOM_AI_CHATS --> ROOM_AI_MSG
+    ROOMS --> ROOM_SUMMARIES
+
+    %% =========================
+    %% RAG ENGINES
+    %% =========================
+    subgraph RAG["Capa RAG"]
+        PERSONAL_RAG["PersonalRagEngine"]
+        ROOM_RAG["StudyRoomRagEngine"]
+        EMBEDDING["EmbeddingService"]
+        RETRIEVAL["Semantic Retrieval / pgvector"]
+    end
+
+    JOBS_PERSONAL --> EMBEDDING
+    JOBS_ROOM --> EMBEDDING
+
+    EMBEDDING --> DOC_CHUNKS
+    EMBEDDING --> ROOM_CHUNKS
+
+    CHAT_SERVICE --> PERSONAL_RAG
+    RESOURCE_SERVICE --> PERSONAL_RAG
+
+    CHAT_SERVICE --> ROOM_RAG
+    RESOURCE_SERVICE --> ROOM_RAG
+
+    PERSONAL_RAG --> DOC_CHUNKS
+    ROOM_RAG --> MEMBERS
+    ROOM_RAG --> ROOM_CHUNKS
+
+    PERSONAL_RAG --> RETRIEVAL
+    ROOM_RAG --> RETRIEVAL
+
+    %% =========================
+    %% AGENTS
+    %% =========================
+    subgraph AGENTS["Arquitectura agéntica"]
+        QA_AGENT["QaAgent<br/>Responde preguntas"]
+        SUMMARY_AGENT["SummaryAgent<br/>Genera resúmenes"]
+        FLASHCARD_AGENT["FlashcardAgent<br/>Genera flashcards"]
+        MOCK_AGENT["MockTestAgent<br/>Genera exámenes"]
+        GRADING_AGENT["GradingAgent<br/>Evalúa respuestas"]
+        PROMPTS["base_prompt<br/>prompts versionados"]
+    end
+
+    PERSONAL_RAG --> QA_AGENT
+    PERSONAL_RAG --> SUMMARY_AGENT
+    PERSONAL_RAG --> FLASHCARD_AGENT
+    PERSONAL_RAG --> MOCK_AGENT
+
+    ROOM_RAG --> QA_AGENT
+    ROOM_RAG --> SUMMARY_AGENT
+    ROOM_RAG --> FLASHCARD_AGENT
+    ROOM_RAG --> MOCK_AGENT
+
+    PROMPTS --> QA_AGENT
+    PROMPTS --> SUMMARY_AGENT
+    PROMPTS --> FLASHCARD_AGENT
+    PROMPTS --> MOCK_AGENT
+    PROMPTS --> GRADING_AGENT
+
+    RESULTS --> GRADING_AGENT
+
+    %% =========================
+    %% LLM PROVIDER
+    %% =========================
+    subgraph AI_PROVIDER["Proveedor IA"]
+        LLM["LLM / Modelo generativo"]
+        EMB_MODEL["Modelo de embeddings"]
+    end
+
+    EMBEDDING --> EMB_MODEL
+
+    QA_AGENT --> LLM
+    SUMMARY_AGENT --> LLM
+    FLASHCARD_AGENT --> LLM
+    MOCK_AGENT --> LLM
+    GRADING_AGENT --> LLM
+
+    %% =========================
+    %% STORAGE / DB
+    %% =========================
+    subgraph DATA["Persistencia"]
+        DB["PostgreSQL + pgvector"]
+        STORAGE["Supabase Storage / Archivos"]
+        LOG_TABLE["logs"]
+    end
+
+    DOCUMENTS --> STORAGE
+    ROOM_DOCS --> STORAGE
+
+    USERS --> DB
+    NOTEBOOKS --> DB
+    DOCUMENTS --> DB
+    DOC_CHUNKS --> DB
+    CHAT_NOTEBOOKS_MSG --> DB
+    SUMMARIES --> DB
+    MOCKS --> DB
+    RESULTS --> DB
+
+    ROOMS --> DB
+    MEMBERS --> DB
+    ROOM_DOCS --> DB
+    ROOM_CHUNKS --> DB
+    CHANNELS --> DB
+    CHANNEL_MSG --> DB
+    ROOM_AI_MSG --> DB
+    ROOM_SUMMARIES --> DB
+
+    LOGS --> LOG_TABLE
+    LOG_TABLE --> DB
+
+    %% =========================
+    %% OUTPUTS
+    %% =========================
+    QA_AGENT --> CHAT_NOTEBOOKS_MSG
+    QA_AGENT --> ROOM_AI_MSG
+
+    SUMMARY_AGENT --> SUMMARIES
+    SUMMARY_AGENT --> ROOM_SUMMARIES
+
+    FLASHCARD_AGENT --> NOTEBOOKS
+    MOCK_AGENT --> MOCKS
+    GRADING_AGENT --> RESULTS
+
+    PROGRESS_SERVICE --> RESULTS
+    PROGRESS_SERVICE --> SUMMARIES
+    PROGRESS_SERVICE --> ROOM_SUMMARIES
+    PROGRESS_SERVICE --> CHAT_NOTEBOOKS_MSG
+    PROGRESS_SERVICE --> ROOM_AI_MSG
+
+    %% =========================
+    %% SECURITY NOTES
+    %% =========================
+    RLS --> USERS
+    RLS --> NOTEBOOKS
+    RLS --> DOCUMENTS
+    RLS --> ROOMS
+    RLS --> MEMBERS

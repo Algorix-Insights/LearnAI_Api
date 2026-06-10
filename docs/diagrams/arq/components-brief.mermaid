@@ -1,0 +1,71 @@
+flowchart TB
+
+    CLIENT["Cliente Web<br/>Next.js"] --> REST["REST API<br/>Auth, uploads, processing jobs"]
+    CLIENT --> GQL["GraphQL API<br/>Queries, mutations, dashboard"]
+
+    REST --> AUTH["Autenticación<br/>JWT / sesión"]
+    GQL --> AUTH
+
+    AUTH --> SECURITY["Capa de seguridad<br/>Multi-tenant + RLS + permisos"]
+
+    REST --> UPLOADS["Carga de archivos<br/>PDF / TXT"]
+    REST --> JOBS["Processing Jobs<br/>extracción, chunking, embeddings"]
+
+    GQL --> DOMAIN["Servicios de dominio<br/>notebooks, chats, salas, progreso"]
+
+    SECURITY --> PERSONAL_CTX["Contexto personal<br/>users → notebooks → documents"]
+    SECURITY --> ROOM_CTX["Contexto colaborativo<br/>study_rooms → members → documents"]
+
+    PERSONAL_CTX --> DOCS["documents"]
+    DOCS --> DOC_CHUNKS["documents_chunks"]
+
+    ROOM_CTX --> ROOM_DOCS["study_rooms_documents"]
+    ROOM_DOCS --> ROOM_CHUNKS["study_rooms_documents_chunks"]
+
+    JOBS --> DOC_CHUNKS
+    JOBS --> ROOM_CHUNKS
+
+    DOC_CHUNKS --> PERSONAL_RAG["PersonalRagEngine"]
+    ROOM_CHUNKS --> ROOM_RAG["StudyRoomRagEngine"]
+
+    DOMAIN --> PERSONAL_RAG
+    DOMAIN --> ROOM_RAG
+
+    PERSONAL_RAG --> AGENTS["Agentes IA"]
+    ROOM_RAG --> AGENTS
+
+    AGENTS --> QA["QaAgent<br/>chat académico"]
+    AGENTS --> SUMMARY["SummaryAgent<br/>resúmenes"]
+    AGENTS --> FLASHCARDS["FlashcardAgent<br/>flashcards"]
+    AGENTS --> MOCKS["MockTestAgent<br/>exámenes"]
+    AGENTS --> GRADING["GradingAgent<br/>evaluación"]
+
+    QA --> CHAT_OUT["Mensajes de chat<br/>con citas y chunks"]
+    SUMMARY --> SUMMARY_OUT["summaries / study_rooms_summaries"]
+    FLASHCARDS --> FLASH_OUT["notebooks.flashcards JSONB"]
+    MOCKS --> MOCK_OUT["mocks_tests"]
+    GRADING --> RESULT_OUT["test_results"]
+
+    QA --> LLM["LLM"]
+    SUMMARY --> LLM
+    FLASHCARDS --> LLM
+    MOCKS --> LLM
+    GRADING --> LLM
+
+    DOMAIN --> DB["PostgreSQL + pgvector"]
+    DOC_CHUNKS --> DB
+    ROOM_CHUNKS --> DB
+    CHAT_OUT --> DB
+    SUMMARY_OUT --> DB
+    FLASH_OUT --> DB
+    MOCK_OUT --> DB
+    RESULT_OUT --> DB
+
+    UPLOADS --> STORAGE["Supabase Storage"]
+
+    REST --> LOGS["logs<br/>trazabilidad"]
+    GQL --> LOGS
+    PERSONAL_RAG --> LOGS
+    ROOM_RAG --> LOGS
+    AGENTS --> LOGS
+    LOGS --> DB

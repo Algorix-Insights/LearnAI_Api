@@ -1,0 +1,27 @@
+flowchart TD
+    A[Usuario autenticado] --> B[Selecciona notebook]
+    B --> C[Sube documento PDF o TXT]
+    C --> D[Registrar documento en documents]
+
+    D --> E[Estado: pending]
+    E --> F[Procesamiento del documento]
+    F --> G[Extracción de texto]
+    G --> H[Chunking]
+    H --> I[Generación de embeddings]
+    I --> J[Guardar chunks en documents_chunks]
+    J --> K[Estado del documento: processed]
+
+    K --> L[Usuario hace una pregunta en chat del notebook]
+    L --> M[Guardar mensaje del usuario en chat_ai_notebooks_messages]
+    M --> N[Generar embedding de la pregunta]
+    N --> O[Buscar chunks similares en documents_chunks]
+    O --> P[Recuperar contexto relevante del notebook]
+
+    P --> Q[Agregar contexto adicional del notebook]
+    Q --> R[Título, descripción, notas, flashcards, progreso, resúmenes previos]
+
+    R --> S[Agente de preguntas y respuestas]
+    S --> T[Generar respuesta fundamentada]
+    T --> U[Guardar respuesta en chat_ai_notebooks_messages]
+    U --> V[Incluir citas, chunks recuperados, tokens y latencia]
+    V --> W[Registrar operación en logs]

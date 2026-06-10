@@ -1,0 +1,34 @@
+flowchart TD
+    A[Usuario sube documento] --> B{Tipo de contexto}
+
+    B -->|Notebook personal| C[Guardar en documents]
+    B -->|Sala de estudio| D[Guardar en study_rooms_documents]
+
+    C --> E[Crear processing job personal]
+    D --> F[Crear processing job colaborativo]
+
+    E --> G[Extraer texto del documento]
+    F --> H[Extraer texto del documento]
+
+    G --> I[Limpiar y normalizar contenido]
+    H --> J[Limpiar y normalizar contenido]
+
+    I --> K[Dividir texto en chunks]
+    J --> L[Dividir texto en chunks]
+
+    K --> M[Generar embeddings]
+    L --> N[Generar embeddings]
+
+    M --> O[Guardar en documents_chunks]
+    N --> P[Guardar en study_rooms_documents_chunks]
+
+    O --> Q[Documento disponible para RAG personal]
+    P --> R[Documento disponible para RAG colaborativo]
+
+    Q --> S[Agentes IA pueden consultar contexto]
+    R --> S
+
+    S --> T[Chat IA]
+    S --> U[Resumen]
+    S --> V[Flashcards]
+    S --> W[Mock tests]
