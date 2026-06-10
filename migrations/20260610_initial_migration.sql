@@ -48,7 +48,6 @@ CREATE TABLE notebooks (
     description text,
     visibility varchar(50) NOT NULL DEFAULT 'private',
     status varchar(50) NOT NULL DEFAULT 'active',
-    flashcards jsonb NOT NULL DEFAULT '[]'::jsonb,
     metadata jsonb,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -56,6 +55,19 @@ CREATE TABLE notebooks (
     CONSTRAINT notebooks_visibility_chk CHECK (visibility IN ('private', 'shared', 'public')),
     CONSTRAINT notebooks_status_chk CHECK (status IN ('active', 'archived', 'deleted')),
     CONSTRAINT notebooks_notebook_id_user_id_uk UNIQUE (notebook_id, user_id)
+);
+
+CREATE TABLE flashcards (
+    flashcard_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    notebook_id uuid NOT NULL REFERENCES notebooks(notebook_id) ON DELETE CASCADE,
+    study_room_id uuid REFERENCES study_rooms(study_room_id) ON DELETE SET NULL,
+    user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    question text NOT NULL,
+    answer text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT flashcards_question_not_empty CHECK (question <> ''),
+    CONSTRAINT flashcards_answer_not_empty CHECK (answer <> '')
 );
 
 CREATE TABLE notebooks_tags_assignments (
@@ -198,7 +210,8 @@ CREATE TABLE base_prompt (
 
 CREATE TABLE mocks_tests (
     mock_test_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    notebook_id uuid NOT NULL REFERENCES notebooks(notebook_id) ON DELETE CASCADE,
+    notebook_id uuid REFERENCES notebooks(notebook_id) ON DELETE CASCADE,
+    study_room_id uuid REFERENCES study_rooms(study_room_id) ON DELETE SET NULL,
     user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     title varchar(255) NOT NULL,
     test_type varchar(80) NOT NULL,
