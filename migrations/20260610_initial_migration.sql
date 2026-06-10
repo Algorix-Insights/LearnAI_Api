@@ -37,35 +37,45 @@ CREATE TABLE notebooks_tags (
     color varchar(32),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT notebooks_tags_user_name_uk UNIQUE (user_id, name)
+    CONSTRAINT notebooks_tags_user_name_uk UNIQUE (user_id, name),
+    CONSTRAINT notebooks_tags_tag_id_user_id_uk UNIQUE (tag_id, user_id)
 );
 
 CREATE TABLE notebooks (
     notebook_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    tag_id uuid REFERENCES notebooks_tags(tag_id) ON DELETE SET NULL,
     title varchar(255) NOT NULL,
     description text,
     visibility varchar(50) NOT NULL DEFAULT 'private',
     status varchar(50) NOT NULL DEFAULT 'active',
     flashcards jsonb NOT NULL DEFAULT '[]'::jsonb,
-    total_documents int NOT NULL DEFAULT 0,
-    total_flashcards int NOT NULL DEFAULT 0,
-    mastered_topics_count int NOT NULL DEFAULT 0,
-    pending_topics_count int NOT NULL DEFAULT 0,
-    average_score numeric(5,2) NOT NULL DEFAULT 0,
+    metadata jsonb,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
     CONSTRAINT notebooks_visibility_chk CHECK (visibility IN ('private', 'shared', 'public')),
     CONSTRAINT notebooks_status_chk CHECK (status IN ('active', 'archived', 'deleted')),
-    CONSTRAINT notebooks_counts_chk CHECK (
-        total_documents >= 0
-        AND total_flashcards >= 0
-        AND mastered_topics_count >= 0
-        AND pending_topics_count >= 0
-    ),
-    CONSTRAINT notebooks_average_score_chk CHECK (average_score >= 0 AND average_score <= 100)
+    CONSTRAINT notebooks_notebook_id_user_id_uk UNIQUE (notebook_id, user_id)
+);
+
+CREATE TABLE notebooks_tags_assignments (
+    notebook_id uuid NOT NULL,
+    tag_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (notebook_id, tag_id),
+    CONSTRAINT notebooks_tags_assignments_notebook_user_fk
+        FOREIGN KEY (notebook_id, user_id)
+        REFERENCES notebooks(notebook_id, user_id)
+        ON DELETE CASCADE,
+    CONSTRAINT notebooks_tags_assignments_tag_user_fk
+        FOREIGN KEY (tag_id, user_id)
+        REFERENCES notebooks_tags(tag_id, user_id)
+        ON DELETE CASCADE,
+    CONSTRAINT notebooks_tags_assignments_user_fk
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE
 );
 
 CREATE TABLE documents (
@@ -79,24 +89,14 @@ CREATE TABLE documents (
     storage_path varchar(2048) NOT NULL,
     processing_status varchar(50) NOT NULL DEFAULT 'pending',
     processing_error text,
-    total_pages int,
-    total_chunks int NOT NULL DEFAULT 0,
-    checksum_sha256 varchar(64),
+    metadata jsonb,
     uploaded_at timestamptz NOT NULL DEFAULT now(),
     processed_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
     CONSTRAINT documents_file_size_chk CHECK (file_size_bytes >= 0),
-    CONSTRAINT documents_pages_chunks_chk CHECK (
-        (total_pages IS NULL OR total_pages >= 0)
-        AND total_chunks >= 0
-    ),
     CONSTRAINT documents_processing_status_chk CHECK (
         processing_status IN ('pending', 'processing', 'processed', 'failed')
-    ),
-    CONSTRAINT documents_checksum_sha256_chk CHECK (
-        checksum_sha256 IS NULL OR checksum_sha256 ~ '^[A-Fa-f0-9]{64}$'
     )
 );
 
@@ -111,7 +111,6 @@ CREATE TABLE documents_chunks (
     token_count int,
     embedding_model varchar(120),
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT documents_chunks_document_index_uk UNIQUE (document_id, chunk_index),
     CONSTRAINT documents_chunks_index_chk CHECK (chunk_index >= 0),
     CONSTRAINT documents_chunks_pages_chk CHECK (
@@ -130,21 +129,7 @@ CREATE TABLE summaries (
     content text NOT NULL,
     summary_type varchar(80) NOT NULL,
     model_name varchar(120),
-    source_documents_count int NOT NULL DEFAULT 0,
-    source_chunks_count int NOT NULL DEFAULT 0,
-    token_input int,
-    token_output int,
-    latency_ms numeric(12,3),
-    generated_at timestamptz NOT NULL DEFAULT now(),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT summaries_counts_chk CHECK (
-        source_documents_count >= 0
-        AND source_chunks_count >= 0
-        AND (token_input IS NULL OR token_input >= 0)
-        AND (token_output IS NULL OR token_output >= 0)
-        AND (latency_ms IS NULL OR latency_ms >= 0)
-    )
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE chat_ai_notebooks (
@@ -507,8 +492,9 @@ CREATE TABLE study_rooms_summaries (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_account_status ON users(account_status);
 CREATE INDEX idx_notebooks_user_id ON notebooks(user_id);
-CREATE INDEX idx_notebooks_tag_id ON notebooks(tag_id);
 CREATE INDEX idx_notebooks_status ON notebooks(status);
+CREATE INDEX idx_notebooks_tags_assignments_tag_id ON notebooks_tags_assignments(tag_id);
+CREATE INDEX idx_notebooks_tags_assignments_user_id ON notebooks_tags_assignments(user_id);
 CREATE INDEX idx_documents_notebook_id ON documents(notebook_id);
 CREATE INDEX idx_documents_user_id ON documents(user_id);
 CREATE INDEX idx_documents_processing_status ON documents(processing_status);
@@ -561,18 +547,6 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER set_notebooks_updated_at
 BEFORE UPDATE ON notebooks
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TRIGGER set_documents_updated_at
-BEFORE UPDATE ON documents
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TRIGGER set_documents_chunks_updated_at
-BEFORE UPDATE ON documents_chunks
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TRIGGER set_summaries_updated_at
-BEFORE UPDATE ON summaries
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER set_chat_ai_notebooks_updated_at
