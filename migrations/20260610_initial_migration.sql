@@ -137,6 +137,7 @@ CREATE TABLE summaries (
     summary_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     notebook_id uuid NOT NULL REFERENCES notebooks(notebook_id) ON DELETE CASCADE,
     user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    study_room_id uuid REFERENCES study_rooms(study_room_id) ON DELETE SET NULL,
     title varchar(255) NOT NULL,
     content text NOT NULL,
     summary_type varchar(80) NOT NULL,
