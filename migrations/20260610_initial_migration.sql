@@ -19,7 +19,6 @@ CREATE TABLE users (
     avatar_url varchar(2048),
     role varchar(50) NOT NULL DEFAULT 'student',
     account_status varchar(50) NOT NULL DEFAULT 'active',
-    preferred_language varchar(20) NOT NULL DEFAULT 'es',
     timezone varchar(100) NOT NULL DEFAULT 'UTC',
     last_login_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -346,115 +345,115 @@ CREATE TABLE study_rooms_members (
     CONSTRAINT study_rooms_members_status_chk CHECK (member_status IN ('active', 'invited', 'blocked', 'left'))
 );
 
-CREATE TABLE study_rooms_documents (
-    study_room_document_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
-    uploaded_by_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    title varchar(255) NOT NULL,
-    original_filename varchar(255) NOT NULL,
-    file_type varchar(100) NOT NULL,
-    file_size_bytes bigint NOT NULL,
-    storage_path varchar(2048) NOT NULL,
-    processing_status varchar(50) NOT NULL DEFAULT 'pending',
-    processing_error text,
-    total_pages int,
-    total_chunks int NOT NULL DEFAULT 0,
-    checksum_sha256 varchar(64),
-    uploaded_at timestamptz NOT NULL DEFAULT now(),
-    processed_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    deleted_at timestamptz,
-    CONSTRAINT study_rooms_documents_file_size_chk CHECK (file_size_bytes >= 0),
-    CONSTRAINT study_rooms_documents_pages_chunks_chk CHECK (
-        (total_pages IS NULL OR total_pages >= 0)
-        AND total_chunks >= 0
-    ),
-    CONSTRAINT study_rooms_documents_processing_status_chk CHECK (
-        processing_status IN ('pending', 'processing', 'processed', 'failed')
-    ),
-    CONSTRAINT study_rooms_documents_checksum_sha256_chk CHECK (
-        checksum_sha256 IS NULL OR checksum_sha256 ~ '^[A-Fa-f0-9]{64}$'
-    )
-);
+-- CREATE TABLE study_rooms_documents (
+--     study_room_document_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
+--     uploaded_by_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+--     title varchar(255) NOT NULL,
+--     original_filename varchar(255) NOT NULL,
+--     file_type varchar(100) NOT NULL,
+--     file_size_bytes bigint NOT NULL,
+--     storage_path varchar(2048) NOT NULL,
+--     processing_status varchar(50) NOT NULL DEFAULT 'pending',
+--     processing_error text,
+--     total_pages int,
+--     total_chunks int NOT NULL DEFAULT 0,
+--     checksum_sha256 varchar(64),
+--     uploaded_at timestamptz NOT NULL DEFAULT now(),
+--     processed_at timestamptz,
+--     created_at timestamptz NOT NULL DEFAULT now(),
+--     updated_at timestamptz NOT NULL DEFAULT now(),
+--     deleted_at timestamptz,
+--     CONSTRAINT study_rooms_documents_file_size_chk CHECK (file_size_bytes >= 0),
+--     CONSTRAINT study_rooms_documents_pages_chunks_chk CHECK (
+--         (total_pages IS NULL OR total_pages >= 0)
+--         AND total_chunks >= 0
+--     ),
+--     CONSTRAINT study_rooms_documents_processing_status_chk CHECK (
+--         processing_status IN ('pending', 'processing', 'processed', 'failed')
+--     ),
+--     CONSTRAINT study_rooms_documents_checksum_sha256_chk CHECK (
+--         checksum_sha256 IS NULL OR checksum_sha256 ~ '^[A-Fa-f0-9]{64}$'
+--     )
+-- );
 
-CREATE TABLE study_rooms_documents_chunks (
-    chunk_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    study_room_document_id uuid NOT NULL REFERENCES study_rooms_documents(study_room_document_id) ON DELETE CASCADE,
-    chunk_index int NOT NULL,
-    page_start int,
-    page_end int,
-    content text NOT NULL,
-    embedding vector,
-    token_count int,
-    embedding_model varchar(120),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT study_rooms_documents_chunks_document_index_uk UNIQUE (study_room_document_id, chunk_index),
-    CONSTRAINT study_rooms_documents_chunks_index_chk CHECK (chunk_index >= 0),
-    CONSTRAINT study_rooms_documents_chunks_pages_chk CHECK (
-        (page_start IS NULL OR page_start >= 0)
-        AND (page_end IS NULL OR page_end >= 0)
-        AND (page_start IS NULL OR page_end IS NULL OR page_end >= page_start)
-    ),
-    CONSTRAINT study_rooms_documents_chunks_token_count_chk CHECK (token_count IS NULL OR token_count >= 0)
-);
+-- CREATE TABLE study_rooms_documents_chunks (
+--     chunk_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     study_room_document_id uuid NOT NULL REFERENCES study_rooms_documents(study_room_document_id) ON DELETE CASCADE,
+--     chunk_index int NOT NULL,
+--     page_start int,
+--     page_end int,
+--     content text NOT NULL,
+--     embedding vector,
+--     token_count int,
+--     embedding_model varchar(120),
+--     created_at timestamptz NOT NULL DEFAULT now(),
+--     updated_at timestamptz NOT NULL DEFAULT now(),
+--     CONSTRAINT study_rooms_documents_chunks_document_index_uk UNIQUE (study_room_document_id, chunk_index),
+--     CONSTRAINT study_rooms_documents_chunks_index_chk CHECK (chunk_index >= 0),
+--     CONSTRAINT study_rooms_documents_chunks_pages_chk CHECK (
+--         (page_start IS NULL OR page_start >= 0)
+--         AND (page_end IS NULL OR page_end >= 0)
+--         AND (page_start IS NULL OR page_end IS NULL OR page_end >= page_start)
+--     ),
+--     CONSTRAINT study_rooms_documents_chunks_token_count_chk CHECK (token_count IS NULL OR token_count >= 0)
+-- );
 
-CREATE TABLE study_rooms_channels (
-    channel_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
-    created_by_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    name varchar(120) NOT NULL,
-    description text,
-    channel_type varchar(50) NOT NULL DEFAULT 'text',
-    status varchar(50) NOT NULL DEFAULT 'active',
-    is_private boolean NOT NULL DEFAULT false,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    deleted_at timestamptz,
-    CONSTRAINT study_rooms_channels_room_name_uk UNIQUE (study_room_id, name),
-    CONSTRAINT study_rooms_channels_type_chk CHECK (channel_type IN ('text', 'ai_chat', 'announcements')),
-    CONSTRAINT study_rooms_channels_status_chk CHECK (status IN ('active', 'archived', 'deleted'))
-);
+-- CREATE TABLE study_rooms_channels (
+--     channel_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
+--     created_by_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+--     name varchar(120) NOT NULL,
+--     description text,
+--     channel_type varchar(50) NOT NULL DEFAULT 'text',
+--     status varchar(50) NOT NULL DEFAULT 'active',
+--     is_private boolean NOT NULL DEFAULT false,
+--     created_at timestamptz NOT NULL DEFAULT now(),
+--     updated_at timestamptz NOT NULL DEFAULT now(),
+--     deleted_at timestamptz,
+--     CONSTRAINT study_rooms_channels_room_name_uk UNIQUE (study_room_id, name),
+--     CONSTRAINT study_rooms_channels_type_chk CHECK (channel_type IN ('text', 'ai_chat', 'announcements')),
+--     CONSTRAINT study_rooms_channels_status_chk CHECK (status IN ('active', 'archived', 'deleted'))
+-- );
 
-CREATE TABLE study_rooms_channels_messages (
-    message_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    channel_id uuid NOT NULL REFERENCES study_rooms_channels(channel_id) ON DELETE CASCADE,
-    study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
-    user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
-    content text NOT NULL,
-    message_type varchar(50) NOT NULL DEFAULT 'text',
-    attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
-    mentions jsonb NOT NULL DEFAULT '[]'::jsonb,
-    is_edited boolean NOT NULL DEFAULT false,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    deleted_at timestamptz,
-    CONSTRAINT study_rooms_channels_messages_type_chk CHECK (
-        message_type IN ('text', 'file', 'system', 'ai')
-    )
-);
+-- CREATE TABLE study_rooms_channels_messages (
+--     message_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     channel_id uuid NOT NULL REFERENCES study_rooms_channels(channel_id) ON DELETE CASCADE,
+--     study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
+--     user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+--     content text NOT NULL,
+--     message_type varchar(50) NOT NULL DEFAULT 'text',
+--     attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
+--     mentions jsonb NOT NULL DEFAULT '[]'::jsonb,
+--     is_edited boolean NOT NULL DEFAULT false,
+--     created_at timestamptz NOT NULL DEFAULT now(),
+--     updated_at timestamptz NOT NULL DEFAULT now(),
+--     deleted_at timestamptz,
+--     CONSTRAINT study_rooms_channels_messages_type_chk CHECK (
+--         message_type IN ('text', 'file', 'system', 'ai')
+--     )
+-- );
 
-CREATE TABLE study_rooms_chat_ai (
-    chat_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
-    channel_id uuid REFERENCES study_rooms_channels(channel_id) ON DELETE SET NULL,
-    created_by_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    title varchar(255),
-    status varchar(50) NOT NULL DEFAULT 'active',
-    model_name varchar(120),
-    temperature numeric(4,3),
-    max_context_chunks int NOT NULL DEFAULT 8,
-    started_at timestamptz NOT NULL DEFAULT now(),
-    last_message_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT study_rooms_chat_ai_status_chk CHECK (status IN ('active', 'archived', 'deleted')),
-    CONSTRAINT study_rooms_chat_ai_temperature_chk CHECK (
-        temperature IS NULL OR (temperature >= 0 AND temperature <= 2)
-    ),
-    CONSTRAINT study_rooms_chat_ai_context_chk CHECK (max_context_chunks >= 0)
-);
+-- CREATE TABLE study_rooms_chat_ai (
+--     chat_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
+--     channel_id uuid REFERENCES study_rooms_channels(channel_id) ON DELETE SET NULL,
+--     created_by_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+--     title varchar(255),
+--     status varchar(50) NOT NULL DEFAULT 'active',
+--     model_name varchar(120),
+--     temperature numeric(4,3),
+--     max_context_chunks int NOT NULL DEFAULT 8,
+--     started_at timestamptz NOT NULL DEFAULT now(),
+--     last_message_at timestamptz,
+--     created_at timestamptz NOT NULL DEFAULT now(),
+--     updated_at timestamptz NOT NULL DEFAULT now(),
+--     CONSTRAINT study_rooms_chat_ai_status_chk CHECK (status IN ('active', 'archived', 'deleted')),
+--     CONSTRAINT study_rooms_chat_ai_temperature_chk CHECK (
+--         temperature IS NULL OR (temperature >= 0 AND temperature <= 2)
+--     ),
+--     CONSTRAINT study_rooms_chat_ai_context_chk CHECK (max_context_chunks >= 0)
+-- );
 
 CREATE TABLE study_rooms_chat_ai_messages (
     message_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -478,30 +477,30 @@ CREATE TABLE study_rooms_chat_ai_messages (
     )
 );
 
-CREATE TABLE study_rooms_summaries (
-    summary_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
-    generated_by_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    title varchar(255) NOT NULL,
-    content text NOT NULL,
-    summary_type varchar(80) NOT NULL,
-    model_name varchar(120),
-    source_documents_count int NOT NULL DEFAULT 0,
-    source_chunks_count int NOT NULL DEFAULT 0,
-    token_input int,
-    token_output int,
-    latency_ms numeric(12,3),
-    generated_at timestamptz NOT NULL DEFAULT now(),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT study_rooms_summaries_counts_chk CHECK (
-        source_documents_count >= 0
-        AND source_chunks_count >= 0
-        AND (token_input IS NULL OR token_input >= 0)
-        AND (token_output IS NULL OR token_output >= 0)
-        AND (latency_ms IS NULL OR latency_ms >= 0)
-    )
-);
+-- CREATE TABLE study_rooms_summaries (
+--     summary_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     study_room_id uuid NOT NULL REFERENCES study_rooms(study_room_id) ON DELETE CASCADE,
+--     generated_by_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+--     title varchar(255) NOT NULL,
+--     content text NOT NULL,
+--     summary_type varchar(80) NOT NULL,
+--     model_name varchar(120),
+--     source_documents_count int NOT NULL DEFAULT 0,
+--     source_chunks_count int NOT NULL DEFAULT 0,
+--     token_input int,
+--     token_output int,
+--     latency_ms numeric(12,3),
+--     generated_at timestamptz NOT NULL DEFAULT now(),
+--     created_at timestamptz NOT NULL DEFAULT now(),
+--     updated_at timestamptz NOT NULL DEFAULT now(),
+--     CONSTRAINT study_rooms_summaries_counts_chk CHECK (
+--         source_documents_count >= 0
+--         AND source_chunks_count >= 0
+--         AND (token_input IS NULL OR token_input >= 0)
+--         AND (token_output IS NULL OR token_output >= 0)
+--         AND (latency_ms IS NULL OR latency_ms >= 0)
+--     )
+-- );
 
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_account_status ON users(account_status);
@@ -537,19 +536,19 @@ CREATE INDEX idx_study_rooms_members_user_id ON study_rooms_members(user_id);
 CREATE INDEX idx_study_rooms_documents_study_room_id ON study_rooms_documents(study_room_id);
 CREATE INDEX idx_study_rooms_documents_uploaded_by_user_id ON study_rooms_documents(uploaded_by_user_id);
 CREATE INDEX idx_study_rooms_documents_chunks_document_id ON study_rooms_documents_chunks(study_room_document_id);
-CREATE INDEX idx_study_rooms_channels_study_room_id ON study_rooms_channels(study_room_id);
-CREATE INDEX idx_study_rooms_channels_created_by_user_id ON study_rooms_channels(created_by_user_id);
-CREATE INDEX idx_study_rooms_channels_messages_channel_id ON study_rooms_channels_messages(channel_id);
-CREATE INDEX idx_study_rooms_channels_messages_study_room_id ON study_rooms_channels_messages(study_room_id);
-CREATE INDEX idx_study_rooms_channels_messages_user_id ON study_rooms_channels_messages(user_id);
+-- CREATE INDEX idx_study_rooms_channels_study_room_id ON study_rooms_channels(study_room_id);
+-- CREATE INDEX idx_study_rooms_channels_created_by_user_id ON study_rooms_channels(created_by_user_id);
+-- CREATE INDEX idx_study_rooms_channels_messages_channel_id ON study_rooms_channels_messages(channel_id);
+-- CREATE INDEX idx_study_rooms_channels_messages_study_room_id ON study_rooms_channels_messages(study_room_id);
+-- CREATE INDEX idx_study_rooms_channels_messages_user_id ON study_rooms_channels_messages(user_id);
 CREATE INDEX idx_study_rooms_chat_ai_study_room_id ON study_rooms_chat_ai(study_room_id);
 CREATE INDEX idx_study_rooms_chat_ai_channel_id ON study_rooms_chat_ai(channel_id);
 CREATE INDEX idx_study_rooms_chat_ai_created_by_user_id ON study_rooms_chat_ai(created_by_user_id);
 CREATE INDEX idx_study_rooms_chat_ai_messages_chat_id ON study_rooms_chat_ai_messages(chat_id);
 CREATE INDEX idx_study_rooms_chat_ai_messages_study_room_id ON study_rooms_chat_ai_messages(study_room_id);
 CREATE INDEX idx_study_rooms_chat_ai_messages_user_id ON study_rooms_chat_ai_messages(user_id);
-CREATE INDEX idx_study_rooms_summaries_study_room_id ON study_rooms_summaries(study_room_id);
-CREATE INDEX idx_study_rooms_summaries_generated_by_user_id ON study_rooms_summaries(generated_by_user_id);
+-- CREATE INDEX idx_study_rooms_summaries_study_room_id ON study_rooms_summaries(study_room_id);
+-- CREATE INDEX idx_study_rooms_summaries_generated_by_user_id ON study_rooms_summaries(generated_by_user_id);
 
 CREATE TRIGGER set_users_updated_at
 BEFORE UPDATE ON users
@@ -591,20 +590,20 @@ CREATE TRIGGER set_study_rooms_documents_chunks_updated_at
 BEFORE UPDATE ON study_rooms_documents_chunks
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER set_study_rooms_channels_updated_at
-BEFORE UPDATE ON study_rooms_channels
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- CREATE TRIGGER set_study_rooms_channels_updated_at
+-- BEFORE UPDATE ON study_rooms_channels
+-- FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER set_study_rooms_channels_messages_updated_at
-BEFORE UPDATE ON study_rooms_channels_messages
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- CREATE TRIGGER set_study_rooms_channels_messages_updated_at
+-- BEFORE UPDATE ON study_rooms_channels_messages
+-- FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER set_study_rooms_chat_ai_updated_at
 BEFORE UPDATE ON study_rooms_chat_ai
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER set_study_rooms_summaries_updated_at
-BEFORE UPDATE ON study_rooms_summaries
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- CREATE TRIGGER set_study_rooms_summaries_updated_at
+-- BEFORE UPDATE ON study_rooms_summaries
+-- FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 COMMIT;
