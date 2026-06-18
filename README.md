@@ -6,7 +6,11 @@ Backend independiente del MVP de LearnIA, construido con FastAPI y orientado a u
 Este repositorio concentra la logica del servidor, la persistencia, la autenticacion, la integracion con Supabase y los adaptadores hacia proveedores externos de IA.
 
 ## Arquitectura
-Se recomienda una arquitectura de **monolito modular** con **Clean Architecture** y bordes **hexagonales**.
+El backend queda configurado como **N-Tier / Layered Architecture** sobre FastAPI, siguiendo el enfoque de capas + Dependency Injection descrito en:
+
+https://dev.to/markoulis/layered-architecture-dependency-injection-a-recipe-for-clean-and-testable-fastapi-code-3ioo
+
+La prioridad es desarrollar rapido sin perder orden: endpoints delgados, servicios con negocio, DAOs para persistencia y DTOs para mover datos entre capas.
 
 ## Patrones de diseño usados
 - **Repository Pattern**: abstrae el acceso a datos y desacopla los casos de uso de Postgres/Supabase.
@@ -20,19 +24,40 @@ Se recomienda una arquitectura de **monolito modular** con **Clean Architecture*
 El backend maneja reglas de negocio sensibles y varias integraciones externas. Separar dominio, casos de uso e infraestructura reduce acoplamiento, mejora testabilidad y permite evolucionar el RAG sin rehacer la base del sistema.
 
 ## Estructura base
-- `src/domain`: reglas de negocio puras, entidades y value objects.
-- `src/application`: casos de uso, puertos y DTOs.
-- `src/infrastructure`: adaptadores, persistencia e integraciones.
-- `src/presentation`: API REST, routers y middleware.
-- `src/shared`: utilidades comunes, errores y tipos compartidos.
-- `src/config`: configuracion, settings y bootstrap.
+- `app/api`: endpoints FastAPI. Deben mapear request/response y delegar a servicios.
+- `app/services`: logica de negocio y coordinacion de transacciones.
+- `app/daos`: acceso a datos. No hacen commit; eso vive en servicios cuando haya DB.
+- `app/dtos`: modelos Pydantic compartidos entre capas.
+- `app/dependencies.py`: DependencyService central para armar servicios y DAOs.
+- `app/core`: configuracion y settings.
 - `tests`: pruebas unitarias, integracion y e2e.
 
 ## Flujo recomendado
-1. La capa `presentation` recibe y valida la solicitud.
-2. `application` coordina el caso de uso.
-3. `domain` aplica reglas y validaciones de negocio.
-4. `infrastructure` persiste o consulta sistemas externos.
+1. `api` recibe la solicitud HTTP y valida entrada/salida.
+2. `dependencies.py` inyecta el servicio con sus DAOs/clientes.
+3. `services` ejecuta reglas de negocio y coordina operaciones.
+4. `daos` consulta o persiste datos.
+5. `dtos` mantiene contratos tipados entre capas.
+
+## Bootstrap actual
+- `app/main.py`: punto de entrada ASGI.
+- `app/api/v1`: routers versionados.
+- `app/dependencies.py`: composicion de servicios.
+- `app/core/config.py`: settings desde variables de entorno.
+- `app/services/health.py`: ejemplo minimo de servicio.
+- `app/dtos/health.py`: ejemplo minimo de DTO.
+
+Health check disponible en:
+- `/health`: probes de infraestructura.
+- `/api/v1/health`: endpoint versionado.
+
+## Como agregar un modulo rapido
+1. Crear DTOs en `app/dtos/<modulo>.py`.
+2. Crear servicio en `app/services/<modulo>.py`.
+3. Crear DAO en `app/daos/<modulo>.py` solo si usa DB o storage.
+4. Registrar constructor en `app/dependencies.py`.
+5. Crear router en `app/api/v1/<modulo>.py`.
+6. Incluir router en `app/api/v1/router.py`.
 
 ## Git Flow
 Se usa **git flow** para ordenar el trabajo por etapas y reducir riesgo en cambios que afectan varias capas del backend.
@@ -83,7 +108,7 @@ Se usa **git flow** para ordenar el trabajo por etapas y reducir riesgo en cambi
 ### Ejecución
 Para iniciar el servidor de desarrollo:
 ```bash
-uvicorn src.main:app --reload
+uvicorn app.main:app --reload
 ```
 La API estará disponible en `http://127.0.0.1:8000`. Puedes acceder a la documentación interactiva en `/docs`.
 
