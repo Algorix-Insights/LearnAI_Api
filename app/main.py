@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from app.infra.v1.health import router as health_router
-from app.infra.v1.router import api_router
+from app.api.v1.health import router as health_router
+from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 
 
