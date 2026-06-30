@@ -1,10 +1,12 @@
+from dataclasses import dataclass
+
 from app.interfaces.health import HealthDTO
 
 
+@dataclass(frozen=True)
 class HealthService:
-    def __init__(self, app_name: str, environment: str) -> None:
-        self.app_name = app_name
-        self.environment = environment
+    app_name: str
+    environment: str
 
     def get_status(self) -> HealthDTO:
         return HealthDTO(
