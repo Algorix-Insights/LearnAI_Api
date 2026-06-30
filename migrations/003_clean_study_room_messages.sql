@@ -17,7 +17,6 @@ CREATE TABLE users (
     email varchar(320) NOT NULL UNIQUE,
     password_hash varchar(255) NOT NULL,
     avatar_url varchar(2048),
-    role varchar(50) NOT NULL DEFAULT 'student',
     account_status varchar(50) NOT NULL DEFAULT 'active',
     timezone varchar(100) NOT NULL DEFAULT 'UTC',
     last_login_at timestamptz,
@@ -25,25 +24,33 @@ CREATE TABLE users (
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
     CONSTRAINT users_email_lowercase_chk CHECK (email = lower(email)),
-    CONSTRAINT users_role_chk CHECK (role IN ('student', 'teacher', 'admin')),
     CONSTRAINT users_account_status_chk CHECK (account_status IN ('active', 'inactive', 'suspended', 'deleted'))
 );
 
-CREATE TABLE notebooks_tags (
+CREATE TABLE tags (
     tag_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     name varchar(120) NOT NULL,
     color varchar(32),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT notebooks_tags_user_name_uk UNIQUE (user_id, name),
-    CONSTRAINT notebooks_tags_tag_id_user_id_uk UNIQUE (tag_id, user_id)
+    CONSTRAINT tags_user_name_uk UNIQUE (user_id, name),
+    CONSTRAINT tags_tag_id_user_id_uk UNIQUE (tag_id, user_id)
 );
 
+CREATE TABLE notebooks_tags (
+    notebook_tag_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tag_id uuid NOT NULL REFERENCES tags(tag_id) ON DELETE CASCADE,
+    notebook_id uuid NOT NULL REFERENCES notebooks(notebook_id) ON DELETE CASCADE
+);
 CREATE TABLE notebooks (
     notebook_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     title varchar(255) NOT NULL,
+    is_favorite boolean NOT NULL DEFAULT false,
+    timer_started_at timestamptz,
+    timer_stopped_at timestamptz,
+    summary text,
     description text,
     visibility varchar(50) NOT NULL DEFAULT 'private',
     status varchar(50) NOT NULL DEFAULT 'active',
