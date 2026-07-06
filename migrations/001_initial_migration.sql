@@ -293,6 +293,67 @@ CREATE TABLE IF NOT EXISTS messages (
     )
 );
 
+-- Indexes
+CREATE INDEX IF NOT EXISTS users_status_created_at_idx
+ON users (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS notebooks_status_updated_at_idx
+ON notebooks (status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS notebooks_due_date_idx
+ON notebooks (due_date)
+WHERE due_date IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS rooms_created_at_idx
+ON rooms (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS members_rooms_room_id_idx
+ON members_rooms (room_id);
+
+CREATE INDEX IF NOT EXISTS personal_notebooks_user_id_idx
+ON personal_notebooks (user_id);
+
+CREATE INDEX IF NOT EXISTS room_notebooks_room_id_idx
+ON room_notebooks (room_id);
+
+CREATE INDEX IF NOT EXISTS room_notebooks_created_by_room_id_idx
+ON room_notebooks (created_by, room_id);
+
+CREATE INDEX IF NOT EXISTS exams_notebook_id_status_idx
+ON exams (notebook_id, status);
+
+CREATE INDEX IF NOT EXISTS exam_questions_question_id_idx
+ON exam_questions (question_id);
+
+CREATE INDEX IF NOT EXISTS attempts_exam_id_status_idx
+ON attempts (exam_id, status);
+
+CREATE INDEX IF NOT EXISTS attempts_user_id_created_at_idx
+ON attempts (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS user_answers_question_id_idx
+ON user_answers (question_id);
+
+CREATE INDEX IF NOT EXISTS user_answers_selected_option_question_idx
+ON user_answers (selected_option_id, question_id)
+WHERE selected_option_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS flashcards_notebook_id_idx
+ON flashcards (notebook_id);
+
+CREATE INDEX IF NOT EXISTS documents_notebook_id_status_idx
+ON documents (notebook_id, status);
+
+CREATE INDEX IF NOT EXISTS documents_processing_status_created_at_idx
+ON documents (processing_status, created_at);
+
+CREATE INDEX IF NOT EXISTS ai_conversations_notebook_status_updated_at_idx
+ON ai_conversations (notebook_id, status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS messages_sent_by_user_id_idx
+ON messages (sent_by_user_id)
+WHERE sent_by_user_id IS NOT NULL;
+
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
