@@ -12,6 +12,7 @@ dependencies = [
   "httpx>=0.27",
   "uvicorn[standard]>=0.30",
   "pydantic-settings>=2.4",
+  "supabase",
 ]
 
 [project.optional-dependencies]
