@@ -6,13 +6,18 @@ Backend independiente del MVP de LearnIA, construido con FastAPI y orientado a u
 
 Este repositorio concentra la logica del servidor, la persistencia, la autenticacion, la integracion con Supabase y los adaptadores hacia proveedores externos de IA.
 
+## Documentacion actual
+
+El estado actual de la aplicacion expone CRUD por agregado y relaciones REST entre recursos. Para consumir o extender esta version, usar estas guias:
+
+- [Guia de consumo de API](docs/guia-consumo-api.md): endpoints CRUD actuales, contratos generales, relaciones REST y errores en espanol.
+- [Guia para contribuir como desarrollador](docs/guia-contribucion-desarrollador.md): patron de desarrollo por recurso con Clean Architecture, contratos Pydantic, use cases, servicios y repositorios.
+
 ## Arquitectura
 
-El backend queda configurado como **N-Tier / Layered Architecture** sobre FastAPI, siguiendo el enfoque de capas + Dependency Injection descrito en:
+El backend queda configurado como **Clean Architecture / Layered Architecture** sobre FastAPI, siguiendo separacion de API, casos de uso, dominio e infraestructura.
 
-https://dev.to/markoulis/layered-architecture-dependency-injection-a-recipe-for-clean-and-testable-fastapi-code-3ioo
-
-La prioridad es desarrollar rapido sin perder orden: endpoints delgados, servicios con negocio, DAOs para persistencia y DTOs para mover datos entre capas.
+La prioridad es desarrollar rapido sin perder orden: endpoints delgados, use cases por agregado, servicios de dominio para reglas de negocio, repositorios para persistencia y contratos Pydantic especificos por recurso.
 
 ## Patrones de diseño usados
 
@@ -29,30 +34,33 @@ El backend maneja reglas de negocio sensibles y varias integraciones externas. S
 
 ## Estructura base
 
-- `app/api`: endpoints FastAPI. Deben mapear request/response y delegar a servicios.
-- `app/services`: logica de negocio y coordinacion de transacciones.
-- `app/daos`: acceso a datos. No hacen commit; eso vive en servicios cuando haya DB.
-- `app/dtos`: modelos Pydantic compartidos entre capas.
-- `app/dependencies.py`: DependencyService central para armar servicios y DAOs.
+- `app/api`: endpoints FastAPI. Deben mapear request/response y delegar a casos de uso.
+- `app/application/usecases`: casos de uso por agregado o relacion REST.
+- `app/domain/schemas`: contratos Pydantic de entidades, requests, responses y repositorios.
+- `app/domain/interfaces`: contratos `Protocol` de repositorios por recurso.
+- `app/domain/services`: reglas de dominio y normalizacion.
+- `app/infra/repositories`: acceso a datos con Supabase.
+- `app/api/dependencies.py`: providers de dependency injection para armar casos de uso.
 - `app/core`: configuracion y settings.
 - `tests`: pruebas unitarias, integracion y e2e.
 
 ## Flujo recomendado
 
 1. `api` recibe la solicitud HTTP y valida entrada/salida.
-2. `dependencies.py` inyecta el servicio con sus DAOs/clientes.
-3. `services` ejecuta reglas de negocio y coordina operaciones.
-4. `daos` consulta o persiste datos.
-5. `dtos` mantiene contratos tipados entre capas.
+2. `app/api/dependencies.py` inyecta el use case con sus repositorios.
+3. `application/usecases` orquesta reglas y persistencia.
+4. `domain/services` ejecuta reglas de negocio cuando aplica.
+5. `infra/repositories` consulta o persiste datos.
+6. `domain/schemas` mantiene contratos tipados entre capas.
 
 ## Bootstrap actual
 
 - `app/main.py`: punto de entrada ASGI.
 - `app/api/v1`: routers versionados.
-- `app/dependencies.py`: composicion de servicios.
+- `app/api/dependencies.py`: composicion de use cases.
 - `app/core/config.py`: settings desde variables de entorno.
-- `app/services/health.py`: ejemplo minimo de servicio.
-- `app/dtos/health.py`: ejemplo minimo de DTO.
+- `app/application/services/health.py`: servicio minimo de health.
+- `app/domain/schemas`: contratos Pydantic.
 
 Health check disponible en:
 
@@ -61,12 +69,14 @@ Health check disponible en:
 
 ## Como agregar un modulo rapido
 
-1. Crear DTOs en `app/dtos/<modulo>.py`.
-2. Crear servicio en `app/services/<modulo>.py`.
-3. Crear DAO en `app/daos/<modulo>.py` solo si usa DB o storage.
-4. Registrar constructor en `app/dependencies.py`.
-5. Crear router en `app/api/v1/<modulo>.py`.
-6. Incluir router en `app/api/v1/router.py`.
+1. Crear contratos en `app/domain/schemas/entities.py` y `app/domain/schemas/resources/<modulo>.py`.
+2. Crear interfaz en `app/domain/interfaces/<modulo>.py`.
+3. Crear servicio de dominio en `app/domain/services/<modulo>.py` si hay reglas.
+4. Crear use case en `app/application/usecases/<modulo>.py`.
+5. Crear repositorio en `app/infra/repositories/<modulo>.py`.
+6. Registrar provider en `app/api/dependencies.py`.
+7. Crear router en `app/api/v1/resources/<modulo>.py`.
+8. Incluir router en `app/api/v1/resources/__init__.py`.
 
 ## Git Flow
 
