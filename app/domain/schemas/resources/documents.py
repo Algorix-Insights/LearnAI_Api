@@ -10,6 +10,35 @@ class DocumentSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DocumentRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    document_id: UUID | None = None
+    notebook_id: UUID | None = None
+    name: str | None = None
+    description: str | None = None
+    source_type: str | None = None
+    storage_path: str | None = None
+    status: str | None = None
+    processing_status: str | None = None
+    mime_type: str | None = None
+    content_text: str | None = None
+    content_hash: str | None = None
+    size_bytes: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class DocumentResponse(DocumentSchema):
+    data: DocumentRead
+
+
+class DocumentListResponse(DocumentSchema):
+    data: list[DocumentRead]
+    limit: int
+    offset: int
+
+
 class DocumentListRequest(DocumentSchema):
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)

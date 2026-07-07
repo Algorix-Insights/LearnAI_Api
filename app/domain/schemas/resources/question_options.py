@@ -9,6 +9,27 @@ class QuestionOptionSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class QuestionOptionRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    option_id: UUID | None = None
+    question_id: UUID | None = None
+    option_text: str | None = None
+    is_correct: bool | None = None
+    option_order: int | None = None
+    created_at: str | None = None
+
+
+class QuestionOptionResponse(QuestionOptionSchema):
+    data: QuestionOptionRead
+
+
+class QuestionOptionListResponse(QuestionOptionSchema):
+    data: list[QuestionOptionRead]
+    limit: int
+    offset: int
+
+
 class QuestionOptionListRequest(QuestionOptionSchema):
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)

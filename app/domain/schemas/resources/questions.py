@@ -9,6 +9,26 @@ class QuestionSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class QuestionRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    question_id: UUID | None = None
+    type: str | None = None
+    statement: str | None = None
+    expected_answer: str | None = None
+    created_at: str | None = None
+
+
+class QuestionResponse(QuestionSchema):
+    data: QuestionRead
+
+
+class QuestionListResponse(QuestionSchema):
+    data: list[QuestionRead]
+    limit: int
+    offset: int
+
+
 class QuestionListRequest(QuestionSchema):
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)

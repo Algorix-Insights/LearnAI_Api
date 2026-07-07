@@ -10,6 +10,26 @@ class RoomSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RoomRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    room_id: UUID | None = None
+    name: str | None = None
+    description: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class RoomResponse(RoomSchema):
+    data: RoomRead
+
+
+class RoomListResponse(RoomSchema):
+    data: list[RoomRead]
+    limit: int
+    offset: int
+
+
 class RoomListRequest(RoomSchema):
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
@@ -72,6 +92,19 @@ class RoomMemberRepositoryDeleteRequest(RoomMemberPath):
     pass
 
 
+class RoomMemberRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    room_id: UUID | None = None
+    member_id: UUID | None = None
+    role: str | None = None
+    joined_at: datetime | None = None
+
+
+class RoomMemberResponse(RoomSchema):
+    data: RoomMemberRead
+
+
 class AddRoomNotebookRequest(RoomSchema):
     notebook_id: UUID
     created_by: UUID
@@ -90,3 +123,17 @@ class RoomNotebookRepositoryCreateRequest(RoomSchema):
 
 class RoomNotebookRepositoryDeleteRequest(RoomNotebookPath):
     pass
+
+
+class RoomNotebookRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    room_id: UUID | None = None
+    notebook_id: UUID | None = None
+    created_by: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class RoomNotebookResponse(RoomSchema):
+    data: RoomNotebookRead

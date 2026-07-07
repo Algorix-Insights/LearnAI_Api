@@ -9,6 +9,29 @@ class UserAnswerSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class UserAnswerRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    answer_id: UUID | None = None
+    attempt_id: UUID | None = None
+    question_id: UUID | None = None
+    selected_option_id: UUID | None = None
+    answer_text: str | None = None
+    is_correct: bool | None = None
+    points_awarded: float | None = None
+    created_at: str | None = None
+
+
+class UserAnswerResponse(UserAnswerSchema):
+    data: UserAnswerRead
+
+
+class UserAnswerListResponse(UserAnswerSchema):
+    data: list[UserAnswerRead]
+    limit: int
+    offset: int
+
+
 class UserAnswerListRequest(UserAnswerSchema):
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)

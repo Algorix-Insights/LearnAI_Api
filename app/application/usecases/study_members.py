@@ -2,10 +2,10 @@ from datetime import UTC, datetime
 
 from app.core.exceptions import EmptyPayloadError, ResourceNotFoundError
 from app.domain.interfaces import StudyMemberRepository
-from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
 from app.domain.schemas.resources.study_members import (
     StudyMemberCreateRequest,
     StudyMemberDeleteRequest,
+    StudyMemberListResponse,
     StudyMemberListRequest,
     StudyMemberPath,
     StudyMemberRepositoryCreateRequest,
@@ -13,6 +13,7 @@ from app.domain.schemas.resources.study_members import (
     StudyMemberRepositoryGetRequest,
     StudyMemberRepositoryListRequest,
     StudyMemberRepositoryUpdateRequest,
+    StudyMemberResponse,
     StudyMemberUpdateRequest,
 )
 
@@ -21,27 +22,27 @@ class StudyMemberUseCase:
     def __init__(self, repository: StudyMemberRepository) -> None:
         self.repository = repository
 
-    async def list(self, request: StudyMemberListRequest) -> CrudListResponse:
+    async def list(self, request: StudyMemberListRequest) -> StudyMemberListResponse:
         data = await self.repository.list(
             StudyMemberRepositoryListRequest(limit=request.limit, offset=request.offset)
         )
-        return CrudListResponse(data=data, limit=request.limit, offset=request.offset)
+        return StudyMemberListResponse(data=data, limit=request.limit, offset=request.offset)
 
-    async def get(self, request: StudyMemberPath) -> CrudItemResponse:
+    async def get(self, request: StudyMemberPath) -> StudyMemberResponse:
         data = await self.repository.get(
             StudyMemberRepositoryGetRequest(member_id=request.member_id)
         )
         if data is None:
             raise ResourceNotFoundError()
-        return CrudItemResponse(data=data)
+        return StudyMemberResponse(data=data)
 
-    async def create(self, request: StudyMemberCreateRequest) -> CrudItemResponse:
+    async def create(self, request: StudyMemberCreateRequest) -> StudyMemberResponse:
         data = await self.repository.create(
             StudyMemberRepositoryCreateRequest(payload=request.payload)
         )
-        return CrudItemResponse(data=data)
+        return StudyMemberResponse(data=data)
 
-    async def update(self, request: StudyMemberUpdateRequest) -> CrudItemResponse:
+    async def update(self, request: StudyMemberUpdateRequest) -> StudyMemberResponse:
         if not request.payload.model_dump(exclude_unset=True):
             raise EmptyPayloadError()
         data = await self.repository.update(
@@ -53,12 +54,12 @@ class StudyMemberUseCase:
         )
         if data is None:
             raise ResourceNotFoundError()
-        return CrudItemResponse(data=data)
+        return StudyMemberResponse(data=data)
 
-    async def delete(self, request: StudyMemberDeleteRequest) -> CrudItemResponse:
+    async def delete(self, request: StudyMemberDeleteRequest) -> StudyMemberResponse:
         data = await self.repository.delete(
             StudyMemberRepositoryDeleteRequest(member_id=request.member_id)
         )
         if data is None:
             raise ResourceNotFoundError()
-        return CrudItemResponse(data=data)
+        return StudyMemberResponse(data=data)

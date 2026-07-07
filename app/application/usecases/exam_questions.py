@@ -1,12 +1,12 @@
 from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import ExamQuestionRepository
 from app.domain.services import ExamService
-from app.domain.schemas.crud import CrudItemResponse
 from app.domain.schemas.resources.exams import (
     AddExamQuestionRequest,
     ExamQuestionPath,
     ExamQuestionRepositoryCreateRequest,
     ExamQuestionRepositoryDeleteRequest,
+    ExamQuestionResponse,
 )
 
 
@@ -17,7 +17,7 @@ class ExamQuestionUseCase:
         self.repository = repository
         self.service = service or ExamService()
 
-    async def add(self, exam_id: str, request: AddExamQuestionRequest) -> CrudItemResponse:
+    async def add(self, exam_id: str, request: AddExamQuestionRequest) -> ExamQuestionResponse:
         request = self.service.prepare_question(request)
         data = await self.repository.create(
             ExamQuestionRepositoryCreateRequest(
@@ -27,9 +27,9 @@ class ExamQuestionUseCase:
                 points=request.points,
             )
         )
-        return CrudItemResponse(data=data)
+        return ExamQuestionResponse(data=data)
 
-    async def remove(self, request: ExamQuestionPath) -> CrudItemResponse:
+    async def remove(self, request: ExamQuestionPath) -> ExamQuestionResponse:
         data = await self.repository.delete(
             ExamQuestionRepositoryDeleteRequest(
                 exam_id=request.exam_id,
@@ -38,4 +38,4 @@ class ExamQuestionUseCase:
         )
         if data is None:
             raise ResourceNotFoundError()
-        return CrudItemResponse(data=data)
+        return ExamQuestionResponse(data=data)

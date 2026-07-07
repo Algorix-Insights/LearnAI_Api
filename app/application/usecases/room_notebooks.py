@@ -1,11 +1,11 @@
 from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import RoomNotebookRepository
-from app.domain.schemas.crud import CrudItemResponse
 from app.domain.schemas.resources.rooms import (
     AddRoomNotebookRequest,
     RoomNotebookPath,
     RoomNotebookRepositoryCreateRequest,
     RoomNotebookRepositoryDeleteRequest,
+    RoomNotebookResponse,
 )
 
 
@@ -13,7 +13,7 @@ class RoomNotebookUseCase:
     def __init__(self, repository: RoomNotebookRepository) -> None:
         self.repository = repository
 
-    async def add(self, room_id: str, request: AddRoomNotebookRequest) -> CrudItemResponse:
+    async def add(self, room_id: str, request: AddRoomNotebookRequest) -> RoomNotebookResponse:
         data = await self.repository.create(
             RoomNotebookRepositoryCreateRequest(
                 room_id=room_id,
@@ -21,9 +21,9 @@ class RoomNotebookUseCase:
                 created_by=request.created_by,
             )
         )
-        return CrudItemResponse(data=data)
+        return RoomNotebookResponse(data=data)
 
-    async def remove(self, request: RoomNotebookPath) -> CrudItemResponse:
+    async def remove(self, request: RoomNotebookPath) -> RoomNotebookResponse:
         data = await self.repository.delete(
             RoomNotebookRepositoryDeleteRequest(
                 room_id=request.room_id,
@@ -32,4 +32,4 @@ class RoomNotebookUseCase:
         )
         if data is None:
             raise ResourceNotFoundError()
-        return CrudItemResponse(data=data)
+        return RoomNotebookResponse(data=data)

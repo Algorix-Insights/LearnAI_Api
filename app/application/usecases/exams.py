@@ -3,10 +3,10 @@ from datetime import UTC, datetime
 from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import ExamRepository
 from app.domain.services import ExamService
-from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
 from app.domain.schemas.resources.exams import (
     ExamCreateRequest,
     ExamDeleteRequest,
+    ExamListResponse,
     ExamListRequest,
     ExamPath,
     ExamRepositoryCreateRequest,
@@ -14,6 +14,7 @@ from app.domain.schemas.resources.exams import (
     ExamRepositoryGetRequest,
     ExamRepositoryListRequest,
     ExamRepositoryUpdateRequest,
+    ExamResponse,
     ExamUpdateRequest,
 )
 
@@ -23,24 +24,24 @@ class ExamUseCase:
         self.repository = repository
         self.service = service or ExamService()
 
-    async def list(self, request: ExamListRequest) -> CrudListResponse:
+    async def list(self, request: ExamListRequest) -> ExamListResponse:
         data = await self.repository.list(
             ExamRepositoryListRequest(limit=request.limit, offset=request.offset)
         )
-        return CrudListResponse(data=data, limit=request.limit, offset=request.offset)
+        return ExamListResponse(data=data, limit=request.limit, offset=request.offset)
 
-    async def get(self, request: ExamPath) -> CrudItemResponse:
+    async def get(self, request: ExamPath) -> ExamResponse:
         data = await self.repository.get(ExamRepositoryGetRequest(exam_id=request.exam_id))
         if data is None:
             raise ResourceNotFoundError()
-        return CrudItemResponse(data=data)
+        return ExamResponse(data=data)
 
-    async def create(self, request: ExamCreateRequest) -> CrudItemResponse:
+    async def create(self, request: ExamCreateRequest) -> ExamResponse:
         request = self.service.prepare_create(request)
         data = await self.repository.create(ExamRepositoryCreateRequest(payload=request.payload))
-        return CrudItemResponse(data=data)
+        return ExamResponse(data=data)
 
-    async def update(self, request: ExamUpdateRequest) -> CrudItemResponse:
+    async def update(self, request: ExamUpdateRequest) -> ExamResponse:
         request = self.service.prepare_update(request)
         data = await self.repository.update(
             ExamRepositoryUpdateRequest(
@@ -51,10 +52,10 @@ class ExamUseCase:
         )
         if data is None:
             raise ResourceNotFoundError()
-        return CrudItemResponse(data=data)
+        return ExamResponse(data=data)
 
-    async def delete(self, request: ExamDeleteRequest) -> CrudItemResponse:
+    async def delete(self, request: ExamDeleteRequest) -> ExamResponse:
         data = await self.repository.delete(ExamRepositoryDeleteRequest(exam_id=request.exam_id))
         if data is None:
             raise ResourceNotFoundError()
-        return CrudItemResponse(data=data)
+        return ExamResponse(data=data)
