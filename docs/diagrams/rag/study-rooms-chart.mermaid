@@ -1,0 +1,32 @@
+flowchart TD
+    A[Usuario autenticado] --> B[Accede a sala de estudio]
+    B --> C[Validar membresía en study_rooms_members]
+    C --> D{Tiene permisos?}
+
+    D -->|No| E[Rechazar operación]
+    D -->|Sí| F[Sube documento compartido]
+
+    F --> G[Registrar documento en study_rooms_documents]
+    G --> H[Estado: pending]
+    H --> I[Procesamiento del documento]
+    I --> J[Extracción de texto]
+    J --> K[Chunking]
+    K --> L[Generación de embeddings]
+    L --> M[Guardar chunks en study_rooms_documents_chunks]
+    M --> N[Estado del documento: processed]
+
+    N --> O[Usuario pregunta en chat IA de sala]
+    O --> P[Validar membresía y permisos]
+    P --> Q[Guardar mensaje en study_rooms_chat_ai_messages]
+    Q --> R[Generar embedding de la pregunta]
+    R --> S[Buscar chunks similares en study_rooms_documents_chunks]
+    S --> T[Recuperar contexto documental de la sala]
+
+    T --> U[Agregar contexto general de la sala]
+    U --> V[Nombre, descripción, miembros, canales, mensajes recientes, resúmenes]
+
+    V --> W[Agente de preguntas y respuestas]
+    W --> X[Generar respuesta fundamentada]
+    X --> Y[Guardar respuesta en study_rooms_chat_ai_messages]
+    Y --> Z[Registrar citas, chunks, tokens y latencia]
+    Z --> AA[Registrar operación en logs]

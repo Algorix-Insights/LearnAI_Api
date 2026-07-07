@@ -1,0 +1,44 @@
+flowchart TD
+    A[Usuario] --> B{Espacio de estudio}
+
+    B -->|Personal| C[Notebook]
+    B -->|Colaborativo| D[Sala de estudio]
+
+    C --> E[Subir documento personal]
+    D --> F[Subir documento compartido]
+
+    E --> G[documents]
+    F --> H[study_rooms_documents]
+
+    G --> I[Procesar documento]
+    H --> J[Procesar documento]
+
+    I --> K[documents_chunks]
+    J --> L[study_rooms_documents_chunks]
+
+    K --> M[PersonalRagEngine]
+    L --> N[StudyRoomRagEngine]
+
+    M --> O[Contexto de notebook]
+    N --> P[Contexto de sala]
+
+    O --> Q[Agentes IA]
+    P --> Q
+
+    Q --> R[QaAgent]
+    Q --> S[SummaryAgent]
+    Q --> T[FlashcardAgent]
+    Q --> U[MockTestAgent]
+    Q --> V[GradingAgent]
+
+    R --> W[Respuestas en chat]
+    S --> X[Resúmenes]
+    T --> Y[Flashcards]
+    U --> Z[Mock tests]
+    V --> AA[Test results]
+
+    W --> AB[logs]
+    X --> AB
+    Y --> AB
+    Z --> AB
+    AA --> AB

@@ -1,0 +1,48 @@
+sequenceDiagram
+    actor U as Usuario
+    participant FE as Frontend
+    participant API as Backend API
+    participant RAG as RAG Engine
+    participant DB as PostgreSQL + pgvector
+    participant AG as Agente especializado
+    participant LLM as LLM
+    participant LOG as logs
+
+    U->>FE: Solicita recurso de aprendizaje
+    FE->>API: createLearningResource(type, sourceDocuments)
+
+    API->>RAG: Recuperar contexto documental
+    RAG->>DB: Consultar chunks según contexto
+
+    alt Notebook personal
+        DB-->>RAG: documents_chunks
+    else Sala de estudio
+        API->>DB: Validar permisos en study_rooms_members
+        DB-->>RAG: study_rooms_documents_chunks
+    end
+
+    RAG-->>API: Chunks relevantes
+
+    alt type = summary
+        API->>AG: SummaryAgent
+    else type = flashcards
+        API->>AG: FlashcardAgent
+    else type = mock_test
+        API->>AG: MockTestAgent
+    end
+
+    AG->>LLM: Generar recurso con contexto
+    LLM-->>AG: Recurso generado
+    AG-->>API: Resultado estructurado
+
+    alt Summary
+        API->>DB: Guardar en summaries o study_rooms_summaries
+    else Flashcards
+        API->>DB: Guardar en notebooks.flashcards o recurso colaborativo
+    else Mock test
+        API->>DB: Guardar en mocks_tests
+    end
+
+    API->>LOG: Registrar operación
+    API-->>FE: Recurso generado
+    FE-->>U: Mostrar resultado

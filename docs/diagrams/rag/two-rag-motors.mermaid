@@ -1,0 +1,20 @@
+flowchart LR
+    subgraph Personal["Motor RAG Personal"]
+        A[notebooks] --> B[documents]
+        B --> C[documents_chunks]
+        C --> D[PersonalRagEngine]
+        D --> E[Chat IA personal]
+        D --> F[Resúmenes personales]
+        D --> G[Flashcards personales]
+        D --> H[Mock tests personales]
+    end
+
+    subgraph Colaborativo["Motor RAG Colaborativo"]
+        I[study_rooms] --> J[study_rooms_documents]
+        J --> K[study_rooms_documents_chunks]
+        K --> L[StudyRoomRagEngine]
+        L --> M[Chat IA de sala]
+        L --> N[Resúmenes colaborativos]
+        L --> O[Flashcards colaborativas]
+        L --> P[Mock tests colaborativos]
+    end

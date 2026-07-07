@@ -1,0 +1,35 @@
+sequenceDiagram
+    actor U as Usuario
+    participant FE as Frontend
+    participant API as Backend API
+    participant RAG as RAG Engine
+    participant DB as PostgreSQL + pgvector
+    participant AG as QaAgent
+    participant LLM as LLM
+    participant LOG as logs
+
+    U->>FE: Escribe pregunta en chat
+    FE->>API: sendChatMessage(content, context)
+    API->>DB: Guardar mensaje del usuario
+
+    API->>RAG: Solicitar recuperación semántica
+    RAG->>RAG: Generar embedding de la pregunta
+    RAG->>DB: Buscar chunks similares
+
+    alt Notebook personal
+        DB-->>RAG: documents_chunks relevantes
+    else Sala de estudio
+        API->>DB: Validar membresía y permisos
+        DB-->>RAG: study_rooms_documents_chunks relevantes
+    end
+
+    RAG-->>API: Contexto recuperado + citas
+    API->>AG: Construir prompt con contexto
+    AG->>LLM: Solicitar respuesta fundamentada
+    LLM-->>AG: Respuesta generada
+    AG-->>API: Respuesta final
+
+    API->>DB: Guardar respuesta del asistente
+    API->>LOG: Registrar trazabilidad
+    API-->>FE: Respuesta + citas + chunks recuperados
+    FE-->>U: Mostrar respuesta

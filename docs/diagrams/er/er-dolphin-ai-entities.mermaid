@@ -1,0 +1,29 @@
+erDiagram
+    users ||--o{ notebooks : has
+    users ||--o{ notebooks_tags : has
+    users ||--o{ base_prompt : has
+    users ||--o{ logs : has
+    users ||--o{ study_rooms : creates_or_joins
+
+    notebooks ||--o{ documents : contains
+    documents ||--o{ documents_chunks : contains
+
+    notebooks ||--o{ summaries : has
+
+    notebooks ||--o{ chat_ai_notebooks : has
+    chat_ai_notebooks ||--o{ chat_ai_notebooks_messages : contains
+
+    notebooks ||--o{ mocks_tests : has
+    mocks_tests ||--o{ test_results : has
+
+    study_rooms ||--o{ study_rooms_members : has
+    study_rooms ||--o{ study_rooms_documents : contains
+    study_rooms_documents ||--o{ study_rooms_documents_chunks : contains
+
+    study_rooms ||--o{ study_rooms_channels : has
+    study_rooms_channels ||--o{ study_rooms_channels_messages : contains
+
+    study_rooms ||--o{ study_rooms_chat_ai : has
+    study_rooms_chat_ai ||--o{ study_rooms_chat_ai_messages : contains
+
+    study_rooms ||--o{ study_rooms_summaries : has
