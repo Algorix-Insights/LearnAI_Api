@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: str = "development"
     api_v1_prefix: str = "/api/v1"
+    supabase_url: str | None = None
+    supabase_secret_key: str | None = None
 
 
 @lru_cache
