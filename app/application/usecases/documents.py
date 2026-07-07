@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 
-from app.core.exceptions import EmptyPayloadError, ResourceNotFoundError
+from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import DocumentRepository
+from app.domain.services import DocumentService
 from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
 from app.domain.schemas.resources.documents import (
     DocumentCreateRequest,
@@ -18,8 +19,11 @@ from app.domain.schemas.resources.documents import (
 
 
 class DocumentUseCase:
-    def __init__(self, repository: DocumentRepository) -> None:
+    def __init__(
+        self, repository: DocumentRepository, service: DocumentService | None = None
+    ) -> None:
         self.repository = repository
+        self.service = service or DocumentService()
 
     async def list(self, request: DocumentListRequest) -> CrudListResponse:
         data = await self.repository.list(
@@ -36,12 +40,12 @@ class DocumentUseCase:
         return CrudItemResponse(data=data)
 
     async def create(self, request: DocumentCreateRequest) -> CrudItemResponse:
+        request = self.service.prepare_create(request)
         data = await self.repository.create(DocumentRepositoryCreateRequest(payload=request.payload))
         return CrudItemResponse(data=data)
 
     async def update(self, request: DocumentUpdateRequest) -> CrudItemResponse:
-        if not request.payload.model_dump(exclude_unset=True):
-            raise EmptyPayloadError()
+        request = self.service.prepare_update(request)
         data = await self.repository.update(
             DocumentRepositoryUpdateRequest(
                 document_id=request.document_id,

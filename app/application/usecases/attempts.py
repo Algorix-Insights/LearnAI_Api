@@ -1,5 +1,6 @@
-from app.core.exceptions import EmptyPayloadError, ResourceNotFoundError
+from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import AttemptRepository
+from app.domain.services import AttemptService
 from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
 from app.domain.schemas.resources.attempts import (
     AttemptCreateRequest,
@@ -16,8 +17,11 @@ from app.domain.schemas.resources.attempts import (
 
 
 class AttemptUseCase:
-    def __init__(self, repository: AttemptRepository) -> None:
+    def __init__(
+        self, repository: AttemptRepository, service: AttemptService | None = None
+    ) -> None:
         self.repository = repository
+        self.service = service or AttemptService()
 
     async def list(self, request: AttemptListRequest) -> CrudListResponse:
         data = await self.repository.list(
@@ -32,12 +36,12 @@ class AttemptUseCase:
         return CrudItemResponse(data=data)
 
     async def create(self, request: AttemptCreateRequest) -> CrudItemResponse:
+        request = self.service.prepare_create(request)
         data = await self.repository.create(AttemptRepositoryCreateRequest(payload=request.payload))
         return CrudItemResponse(data=data)
 
     async def update(self, request: AttemptUpdateRequest) -> CrudItemResponse:
-        if not request.payload.model_dump(exclude_unset=True):
-            raise EmptyPayloadError()
+        request = self.service.prepare_update(request)
         data = await self.repository.update(
             AttemptRepositoryUpdateRequest(attempt_id=request.attempt_id, payload=request.payload)
         )

@@ -1,5 +1,6 @@
 from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import ExamQuestionRepository
+from app.domain.services import ExamService
 from app.domain.schemas.crud import CrudItemResponse
 from app.domain.schemas.resources.exams import (
     AddExamQuestionRequest,
@@ -10,10 +11,14 @@ from app.domain.schemas.resources.exams import (
 
 
 class ExamQuestionUseCase:
-    def __init__(self, repository: ExamQuestionRepository) -> None:
+    def __init__(
+        self, repository: ExamQuestionRepository, service: ExamService | None = None
+    ) -> None:
         self.repository = repository
+        self.service = service or ExamService()
 
     async def add(self, exam_id: str, request: AddExamQuestionRequest) -> CrudItemResponse:
+        request = self.service.prepare_question(request)
         data = await self.repository.create(
             ExamQuestionRepositoryCreateRequest(
                 exam_id=exam_id,

@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 
-from app.core.exceptions import EmptyPayloadError, ResourceNotFoundError
+from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import ExamRepository
+from app.domain.services import ExamService
 from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
 from app.domain.schemas.resources.exams import (
     ExamCreateRequest,
@@ -18,8 +19,9 @@ from app.domain.schemas.resources.exams import (
 
 
 class ExamUseCase:
-    def __init__(self, repository: ExamRepository) -> None:
+    def __init__(self, repository: ExamRepository, service: ExamService | None = None) -> None:
         self.repository = repository
+        self.service = service or ExamService()
 
     async def list(self, request: ExamListRequest) -> CrudListResponse:
         data = await self.repository.list(
@@ -34,12 +36,12 @@ class ExamUseCase:
         return CrudItemResponse(data=data)
 
     async def create(self, request: ExamCreateRequest) -> CrudItemResponse:
+        request = self.service.prepare_create(request)
         data = await self.repository.create(ExamRepositoryCreateRequest(payload=request.payload))
         return CrudItemResponse(data=data)
 
     async def update(self, request: ExamUpdateRequest) -> CrudItemResponse:
-        if not request.payload.model_dump(exclude_unset=True):
-            raise EmptyPayloadError()
+        request = self.service.prepare_update(request)
         data = await self.repository.update(
             ExamRepositoryUpdateRequest(
                 exam_id=request.exam_id,

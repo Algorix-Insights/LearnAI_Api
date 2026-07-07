@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 
-from app.core.exceptions import EmptyPayloadError, ResourceNotFoundError
+from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import NotebookRepository
+from app.domain.services import NotebookService
 from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
 from app.domain.schemas.resources.notebooks import (
     NotebookCreateRequest,
@@ -18,8 +19,11 @@ from app.domain.schemas.resources.notebooks import (
 
 
 class NotebookUseCase:
-    def __init__(self, repository: NotebookRepository) -> None:
+    def __init__(
+        self, repository: NotebookRepository, service: NotebookService | None = None
+    ) -> None:
         self.repository = repository
+        self.service = service or NotebookService()
 
     async def list(self, request: NotebookListRequest) -> CrudListResponse:
         data = await self.repository.list(
@@ -36,12 +40,12 @@ class NotebookUseCase:
         return CrudItemResponse(data=data)
 
     async def create(self, request: NotebookCreateRequest) -> CrudItemResponse:
+        request = self.service.prepare_create(request)
         data = await self.repository.create(NotebookRepositoryCreateRequest(payload=request.payload))
         return CrudItemResponse(data=data)
 
     async def update(self, request: NotebookUpdateRequest) -> CrudItemResponse:
-        if not request.payload.model_dump(exclude_unset=True):
-            raise EmptyPayloadError()
+        request = self.service.prepare_update(request)
         data = await self.repository.update(
             NotebookRepositoryUpdateRequest(
                 notebook_id=request.notebook_id,

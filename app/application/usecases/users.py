@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 
-from app.core.exceptions import EmptyPayloadError, ResourceNotFoundError
+from app.core.exceptions import ResourceNotFoundError
 from app.domain.interfaces import UserRepository
+from app.domain.services import UserService
 from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
 from app.domain.schemas.resources.users import (
     UserCreateRequest,
@@ -18,8 +19,9 @@ from app.domain.schemas.resources.users import (
 
 
 class UserUseCase:
-    def __init__(self, repository: UserRepository) -> None:
+    def __init__(self, repository: UserRepository, service: UserService | None = None) -> None:
         self.repository = repository
+        self.service = service or UserService()
 
     async def list(self, request: UserListRequest) -> CrudListResponse:
         data = await self.repository.list(
@@ -38,12 +40,12 @@ class UserUseCase:
         return CrudItemResponse(data=self._hide_sensitive_fields(data))
 
     async def create(self, request: UserCreateRequest) -> CrudItemResponse:
+        request = self.service.prepare_create(request)
         data = await self.repository.create(UserRepositoryCreateRequest(payload=request.payload))
         return CrudItemResponse(data=self._hide_sensitive_fields(data))
 
     async def update(self, request: UserUpdateRequest) -> CrudItemResponse:
-        if not request.payload.model_dump(exclude_unset=True):
-            raise EmptyPayloadError()
+        request = self.service.prepare_update(request)
         data = await self.repository.update(
             UserRepositoryUpdateRequest(
                 user_id=request.user_id,
