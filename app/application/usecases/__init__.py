@@ -1,4 +1,3 @@
-from app.application.usecases.aggregate_crud import AggregateCrudUseCase
 from app.application.usecases.attempts import AttemptUseCase
 from app.application.usecases.document_chunks import DocumentChunkUseCase
 from app.application.usecases.documents import DocumentUseCase
@@ -19,7 +18,6 @@ from app.application.usecases.user_answers import UserAnswerUseCase
 from app.application.usecases.users import UserUseCase
 
 __all__ = [
-    "AggregateCrudUseCase",
     "AttemptUseCase",
     "DocumentChunkUseCase",
     "DocumentUseCase",

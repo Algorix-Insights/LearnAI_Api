@@ -5,27 +5,26 @@ from fastapi import APIRouter, Depends, status
 from app.api.dependencies import get_room_members_use_case, get_room_notebooks_use_case
 from app.api.dependencies import get_rooms_use_case
 from app.application.usecases import RoomMemberUseCase, RoomNotebookUseCase, RoomUseCase
-from app.domain.schemas import (
+from app.domain.schemas import CrudItemResponse, CrudListResponse
+from app.domain.schemas.entities import RoomCreate, RoomUpdate
+from app.domain.schemas.resources.rooms import (
     AddRoomMemberRequest,
     AddRoomNotebookRequest,
-    CreateItemRequest,
-    CrudItemResponse,
-    CrudListResponse,
-    DeleteItemRequest,
-    ListItemsRequest,
+    RoomCreateRequest,
+    RoomDeleteRequest,
+    RoomListRequest,
     RoomMemberPath,
     RoomNotebookPath,
     RoomPath,
-    UpdateItemRequest,
+    RoomUpdateRequest,
 )
-from app.domain.schemas.entities import RoomCreate, RoomUpdate
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 
 @router.get("", response_model=CrudListResponse)
 async def list_rooms(
-    request: Annotated[ListItemsRequest, Depends()],
+    request: Annotated[RoomListRequest, Depends()],
     use_case: Annotated[RoomUseCase, Depends(get_rooms_use_case)],
 ) -> CrudListResponse:
     return await use_case.list(request)
@@ -36,7 +35,7 @@ async def create_room(
     payload: RoomCreate,
     use_case: Annotated[RoomUseCase, Depends(get_rooms_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.create(CreateItemRequest(payload=payload))
+    return await use_case.create(RoomCreateRequest(payload=payload))
 
 
 @router.get("/{room_id}", response_model=CrudItemResponse)
@@ -44,7 +43,7 @@ async def get_room(
     path: Annotated[RoomPath, Depends()],
     use_case: Annotated[RoomUseCase, Depends(get_rooms_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.get(path.to_item_request())
+    return await use_case.get(path)
 
 
 @router.patch("/{room_id}", response_model=CrudItemResponse)
@@ -53,7 +52,7 @@ async def update_room(
     payload: RoomUpdate,
     use_case: Annotated[RoomUseCase, Depends(get_rooms_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.update(UpdateItemRequest(item_id=str(path.room_id), payload=payload))
+    return await use_case.update(RoomUpdateRequest(room_id=path.room_id, payload=payload))
 
 
 @router.delete("/{room_id}", response_model=CrudItemResponse)
@@ -61,7 +60,7 @@ async def delete_room(
     path: Annotated[RoomPath, Depends()],
     use_case: Annotated[RoomUseCase, Depends(get_rooms_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.delete(DeleteItemRequest(item_id=str(path.room_id)))
+    return await use_case.delete(RoomDeleteRequest(room_id=path.room_id))
 
 
 @router.post(

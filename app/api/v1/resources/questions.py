@@ -4,23 +4,22 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.dependencies import get_questions_use_case
 from app.application.usecases import QuestionUseCase
-from app.domain.schemas import (
-    CreateItemRequest,
-    CrudItemResponse,
-    CrudListResponse,
-    DeleteItemRequest,
-    ListItemsRequest,
-    QuestionPath,
-    UpdateItemRequest,
-)
+from app.domain.schemas import CrudItemResponse, CrudListResponse
 from app.domain.schemas.entities import QuestionCreate, QuestionUpdate
+from app.domain.schemas.resources.questions import (
+    QuestionCreateRequest,
+    QuestionDeleteRequest,
+    QuestionListRequest,
+    QuestionPath,
+    QuestionUpdateRequest,
+)
 
 router = APIRouter(prefix="/questions", tags=["questions"])
 
 
 @router.get("", response_model=CrudListResponse)
 async def list_questions(
-    request: Annotated[ListItemsRequest, Depends()],
+    request: Annotated[QuestionListRequest, Depends()],
     use_case: Annotated[QuestionUseCase, Depends(get_questions_use_case)],
 ) -> CrudListResponse:
     return await use_case.list(request)
@@ -31,7 +30,7 @@ async def create_question(
     payload: QuestionCreate,
     use_case: Annotated[QuestionUseCase, Depends(get_questions_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.create(CreateItemRequest(payload=payload))
+    return await use_case.create(QuestionCreateRequest(payload=payload))
 
 
 @router.get("/{question_id}", response_model=CrudItemResponse)
@@ -39,7 +38,7 @@ async def get_question(
     path: Annotated[QuestionPath, Depends()],
     use_case: Annotated[QuestionUseCase, Depends(get_questions_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.get(path.to_item_request())
+    return await use_case.get(path)
 
 
 @router.patch("/{question_id}", response_model=CrudItemResponse)
@@ -49,7 +48,7 @@ async def update_question(
     use_case: Annotated[QuestionUseCase, Depends(get_questions_use_case)],
 ) -> CrudItemResponse:
     return await use_case.update(
-        UpdateItemRequest(item_id=str(path.question_id), payload=payload)
+        QuestionUpdateRequest(question_id=path.question_id, payload=payload)
     )
 
 
@@ -58,4 +57,4 @@ async def delete_question(
     path: Annotated[QuestionPath, Depends()],
     use_case: Annotated[QuestionUseCase, Depends(get_questions_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.delete(DeleteItemRequest(item_id=str(path.question_id)))
+    return await use_case.delete(QuestionDeleteRequest(question_id=path.question_id))

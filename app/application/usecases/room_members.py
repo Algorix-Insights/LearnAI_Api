@@ -1,22 +1,34 @@
 from app.core.exceptions import ResourceNotFoundError
-from app.domain.interfaces import CompositeRepository
-from app.domain.schemas import AddRoomMemberRequest, RoomMemberPath
-from app.domain.schemas.aggregate import RepositoryCreateItemRequest, RepositoryFilterRequest
+from app.domain.interfaces import RoomMemberRepository
 from app.domain.schemas.crud import CrudItemResponse
+from app.domain.schemas.resources.rooms import (
+    AddRoomMemberRequest,
+    RoomMemberPath,
+    RoomMemberRepositoryCreateRequest,
+    RoomMemberRepositoryDeleteRequest,
+)
 
 
 class RoomMemberUseCase:
-    def __init__(self, repository: CompositeRepository) -> None:
+    def __init__(self, repository: RoomMemberRepository) -> None:
         self.repository = repository
 
     async def add(self, room_id: str, request: AddRoomMemberRequest) -> CrudItemResponse:
-        payload = {"room_id": room_id, **request.model_dump(mode="json")}
-        data = await self.repository.create(RepositoryCreateItemRequest(payload=payload))
+        data = await self.repository.create(
+            RoomMemberRepositoryCreateRequest(
+                room_id=room_id,
+                member_id=request.member_id,
+                role=request.role,
+            )
+        )
         return CrudItemResponse(data=data)
 
     async def remove(self, request: RoomMemberPath) -> CrudItemResponse:
-        data = await self.repository.delete_by_filter(
-            RepositoryFilterRequest(filters=request.model_dump(mode="json"))
+        data = await self.repository.delete(
+            RoomMemberRepositoryDeleteRequest(
+                room_id=request.room_id,
+                member_id=request.member_id,
+            )
         )
         if data is None:
             raise ResourceNotFoundError()

@@ -4,24 +4,23 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.dependencies import get_personal_notebooks_use_case, get_users_use_case
 from app.application.usecases import PersonalNotebookUseCase, UserUseCase
-from app.domain.schemas import (
-    CreateItemRequest,
-    CrudItemResponse,
-    CrudListResponse,
-    DeleteItemRequest,
-    ListItemsRequest,
-    PersonalNotebookPath,
-    UpdateItemRequest,
-    UserPath,
-)
+from app.domain.schemas import CrudItemResponse, CrudListResponse
 from app.domain.schemas.entities import UserCreate, UserUpdate
+from app.domain.schemas.resources.users import (
+    PersonalNotebookPath,
+    UserCreateRequest,
+    UserDeleteRequest,
+    UserListRequest,
+    UserPath,
+    UserUpdateRequest,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.get("", response_model=CrudListResponse)
 async def list_users(
-    request: Annotated[ListItemsRequest, Depends()],
+    request: Annotated[UserListRequest, Depends()],
     use_case: Annotated[UserUseCase, Depends(get_users_use_case)],
 ) -> CrudListResponse:
     return await use_case.list(request)
@@ -32,7 +31,7 @@ async def create_user(
     payload: UserCreate,
     use_case: Annotated[UserUseCase, Depends(get_users_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.create(CreateItemRequest(payload=payload))
+    return await use_case.create(UserCreateRequest(payload=payload))
 
 
 @router.get("/{user_id}", response_model=CrudItemResponse)
@@ -40,7 +39,7 @@ async def get_user(
     path: Annotated[UserPath, Depends()],
     use_case: Annotated[UserUseCase, Depends(get_users_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.get(path.to_item_request())
+    return await use_case.get(path)
 
 
 @router.patch("/{user_id}", response_model=CrudItemResponse)
@@ -49,7 +48,7 @@ async def update_user(
     payload: UserUpdate,
     use_case: Annotated[UserUseCase, Depends(get_users_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.update(UpdateItemRequest(item_id=str(path.user_id), payload=payload))
+    return await use_case.update(UserUpdateRequest(user_id=path.user_id, payload=payload))
 
 
 @router.delete("/{user_id}", response_model=CrudItemResponse)
@@ -57,7 +56,7 @@ async def delete_user(
     path: Annotated[UserPath, Depends()],
     use_case: Annotated[UserUseCase, Depends(get_users_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.delete(DeleteItemRequest(item_id=str(path.user_id)))
+    return await use_case.delete(UserDeleteRequest(user_id=path.user_id))
 
 
 @router.post(

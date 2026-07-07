@@ -4,25 +4,24 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.dependencies import get_exam_questions_use_case, get_exams_use_case
 from app.application.usecases import ExamQuestionUseCase, ExamUseCase
-from app.domain.schemas import (
+from app.domain.schemas import CrudItemResponse, CrudListResponse
+from app.domain.schemas.entities import ExamCreate, ExamUpdate
+from app.domain.schemas.resources.exams import (
     AddExamQuestionRequest,
-    CreateItemRequest,
-    CrudItemResponse,
-    CrudListResponse,
-    DeleteItemRequest,
+    ExamCreateRequest,
+    ExamDeleteRequest,
+    ExamListRequest,
     ExamPath,
     ExamQuestionPath,
-    ListItemsRequest,
-    UpdateItemRequest,
+    ExamUpdateRequest,
 )
-from app.domain.schemas.entities import ExamCreate, ExamUpdate
 
 router = APIRouter(prefix="/exams", tags=["exams"])
 
 
 @router.get("", response_model=CrudListResponse)
 async def list_exams(
-    request: Annotated[ListItemsRequest, Depends()],
+    request: Annotated[ExamListRequest, Depends()],
     use_case: Annotated[ExamUseCase, Depends(get_exams_use_case)],
 ) -> CrudListResponse:
     return await use_case.list(request)
@@ -33,7 +32,7 @@ async def create_exam(
     payload: ExamCreate,
     use_case: Annotated[ExamUseCase, Depends(get_exams_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.create(CreateItemRequest(payload=payload))
+    return await use_case.create(ExamCreateRequest(payload=payload))
 
 
 @router.get("/{exam_id}", response_model=CrudItemResponse)
@@ -41,7 +40,7 @@ async def get_exam(
     path: Annotated[ExamPath, Depends()],
     use_case: Annotated[ExamUseCase, Depends(get_exams_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.get(path.to_item_request())
+    return await use_case.get(path)
 
 
 @router.patch("/{exam_id}", response_model=CrudItemResponse)
@@ -50,7 +49,7 @@ async def update_exam(
     payload: ExamUpdate,
     use_case: Annotated[ExamUseCase, Depends(get_exams_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.update(UpdateItemRequest(item_id=str(path.exam_id), payload=payload))
+    return await use_case.update(ExamUpdateRequest(exam_id=path.exam_id, payload=payload))
 
 
 @router.delete("/{exam_id}", response_model=CrudItemResponse)
@@ -58,7 +57,7 @@ async def delete_exam(
     path: Annotated[ExamPath, Depends()],
     use_case: Annotated[ExamUseCase, Depends(get_exams_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.delete(DeleteItemRequest(item_id=str(path.exam_id)))
+    return await use_case.delete(ExamDeleteRequest(exam_id=path.exam_id))
 
 
 @router.post(

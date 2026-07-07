@@ -1,8 +1,62 @@
-from app.application.usecases.aggregate_crud import AggregateCrudUseCase
-from app.domain.aggregates import AGGREGATES
-from app.domain.interfaces import AggregateRepository
+from datetime import UTC, datetime
+
+from app.core.exceptions import EmptyPayloadError, ResourceNotFoundError
+from app.domain.interfaces import NotebookRepository
+from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
+from app.domain.schemas.resources.notebooks import (
+    NotebookCreateRequest,
+    NotebookDeleteRequest,
+    NotebookListRequest,
+    NotebookPath,
+    NotebookRepositoryCreateRequest,
+    NotebookRepositoryDeleteRequest,
+    NotebookRepositoryGetRequest,
+    NotebookRepositoryListRequest,
+    NotebookRepositoryUpdateRequest,
+    NotebookUpdateRequest,
+)
 
 
-class NotebookUseCase(AggregateCrudUseCase):
-    def __init__(self, repository: AggregateRepository) -> None:
-        super().__init__(AGGREGATES["notebooks"], repository)
+class NotebookUseCase:
+    def __init__(self, repository: NotebookRepository) -> None:
+        self.repository = repository
+
+    async def list(self, request: NotebookListRequest) -> CrudListResponse:
+        data = await self.repository.list(
+            NotebookRepositoryListRequest(limit=request.limit, offset=request.offset)
+        )
+        return CrudListResponse(data=data, limit=request.limit, offset=request.offset)
+
+    async def get(self, request: NotebookPath) -> CrudItemResponse:
+        data = await self.repository.get(
+            NotebookRepositoryGetRequest(notebook_id=request.notebook_id)
+        )
+        if data is None:
+            raise ResourceNotFoundError()
+        return CrudItemResponse(data=data)
+
+    async def create(self, request: NotebookCreateRequest) -> CrudItemResponse:
+        data = await self.repository.create(NotebookRepositoryCreateRequest(payload=request.payload))
+        return CrudItemResponse(data=data)
+
+    async def update(self, request: NotebookUpdateRequest) -> CrudItemResponse:
+        if not request.payload.model_dump(exclude_unset=True):
+            raise EmptyPayloadError()
+        data = await self.repository.update(
+            NotebookRepositoryUpdateRequest(
+                notebook_id=request.notebook_id,
+                payload=request.payload,
+                updated_at=datetime.now(UTC),
+            )
+        )
+        if data is None:
+            raise ResourceNotFoundError()
+        return CrudItemResponse(data=data)
+
+    async def delete(self, request: NotebookDeleteRequest) -> CrudItemResponse:
+        data = await self.repository.delete(
+            NotebookRepositoryDeleteRequest(notebook_id=request.notebook_id)
+        )
+        if data is None:
+            raise ResourceNotFoundError()
+        return CrudItemResponse(data=data)

@@ -1,22 +1,35 @@
 from app.core.exceptions import ResourceNotFoundError
-from app.domain.interfaces import CompositeRepository
-from app.domain.schemas import AddExamQuestionRequest, ExamQuestionPath
-from app.domain.schemas.aggregate import RepositoryCreateItemRequest, RepositoryFilterRequest
+from app.domain.interfaces import ExamQuestionRepository
 from app.domain.schemas.crud import CrudItemResponse
+from app.domain.schemas.resources.exams import (
+    AddExamQuestionRequest,
+    ExamQuestionPath,
+    ExamQuestionRepositoryCreateRequest,
+    ExamQuestionRepositoryDeleteRequest,
+)
 
 
 class ExamQuestionUseCase:
-    def __init__(self, repository: CompositeRepository) -> None:
+    def __init__(self, repository: ExamQuestionRepository) -> None:
         self.repository = repository
 
     async def add(self, exam_id: str, request: AddExamQuestionRequest) -> CrudItemResponse:
-        payload = {"exam_id": exam_id, **request.model_dump(mode="json")}
-        data = await self.repository.create(RepositoryCreateItemRequest(payload=payload))
+        data = await self.repository.create(
+            ExamQuestionRepositoryCreateRequest(
+                exam_id=exam_id,
+                question_id=request.question_id,
+                question_order=request.question_order,
+                points=request.points,
+            )
+        )
         return CrudItemResponse(data=data)
 
     async def remove(self, request: ExamQuestionPath) -> CrudItemResponse:
-        data = await self.repository.delete_by_filter(
-            RepositoryFilterRequest(filters=request.model_dump(mode="json"))
+        data = await self.repository.delete(
+            ExamQuestionRepositoryDeleteRequest(
+                exam_id=request.exam_id,
+                question_id=request.question_id,
+            )
         )
         if data is None:
             raise ResourceNotFoundError()

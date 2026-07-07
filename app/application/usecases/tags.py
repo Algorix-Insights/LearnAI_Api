@@ -1,8 +1,52 @@
-from app.application.usecases.aggregate_crud import AggregateCrudUseCase
-from app.domain.aggregates import AGGREGATES
-from app.domain.interfaces import AggregateRepository
+from app.core.exceptions import EmptyPayloadError, ResourceNotFoundError
+from app.domain.interfaces import TagRepository
+from app.domain.schemas.crud import CrudItemResponse, CrudListResponse
+from app.domain.schemas.resources.tags import (
+    TagCreateRequest,
+    TagDeleteRequest,
+    TagListRequest,
+    TagPath,
+    TagRepositoryCreateRequest,
+    TagRepositoryDeleteRequest,
+    TagRepositoryGetRequest,
+    TagRepositoryListRequest,
+    TagRepositoryUpdateRequest,
+    TagUpdateRequest,
+)
 
 
-class TagUseCase(AggregateCrudUseCase):
-    def __init__(self, repository: AggregateRepository) -> None:
-        super().__init__(AGGREGATES["tags"], repository)
+class TagUseCase:
+    def __init__(self, repository: TagRepository) -> None:
+        self.repository = repository
+
+    async def list(self, request: TagListRequest) -> CrudListResponse:
+        data = await self.repository.list(
+            TagRepositoryListRequest(limit=request.limit, offset=request.offset)
+        )
+        return CrudListResponse(data=data, limit=request.limit, offset=request.offset)
+
+    async def get(self, request: TagPath) -> CrudItemResponse:
+        data = await self.repository.get(TagRepositoryGetRequest(tag_id=request.tag_id))
+        if data is None:
+            raise ResourceNotFoundError()
+        return CrudItemResponse(data=data)
+
+    async def create(self, request: TagCreateRequest) -> CrudItemResponse:
+        data = await self.repository.create(TagRepositoryCreateRequest(payload=request.payload))
+        return CrudItemResponse(data=data)
+
+    async def update(self, request: TagUpdateRequest) -> CrudItemResponse:
+        if not request.payload.model_dump(exclude_unset=True):
+            raise EmptyPayloadError()
+        data = await self.repository.update(
+            TagRepositoryUpdateRequest(tag_id=request.tag_id, payload=request.payload)
+        )
+        if data is None:
+            raise ResourceNotFoundError()
+        return CrudItemResponse(data=data)
+
+    async def delete(self, request: TagDeleteRequest) -> CrudItemResponse:
+        data = await self.repository.delete(TagRepositoryDeleteRequest(tag_id=request.tag_id))
+        if data is None:
+            raise ResourceNotFoundError()
+        return CrudItemResponse(data=data)

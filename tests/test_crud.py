@@ -4,11 +4,12 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_users_use_case
 from app.application.usecases import UserUseCase
-from app.domain.schemas.aggregate import (
-    RepositoryCreateItemRequest,
-    RepositoryItemRequest,
-    RepositoryListItemsRequest,
-    RepositoryUpdateItemRequest,
+from app.domain.schemas.resources.users import (
+    UserRepositoryCreateRequest,
+    UserRepositoryDeleteRequest,
+    UserRepositoryGetRequest,
+    UserRepositoryListRequest,
+    UserRepositoryUpdateRequest,
 )
 from app.main import app
 
@@ -27,28 +28,29 @@ class FakeCrudRepository:
             ]
         }
 
-    async def list(self, request: RepositoryListItemsRequest) -> list[dict[str, Any]]:
+    async def list(self, request: UserRepositoryListRequest) -> list[dict[str, Any]]:
         return self.data["users"][request.offset : request.offset + request.limit]
 
-    async def get(self, request: RepositoryItemRequest) -> dict[str, Any] | None:
+    async def get(self, request: UserRepositoryGetRequest) -> dict[str, Any] | None:
         for item in self.data["users"]:
-            if item["user_id"] == request.item_id:
+            if item["user_id"] == str(request.user_id):
                 return item
         return None
 
-    async def create(self, request: RepositoryCreateItemRequest) -> dict[str, Any]:
-        item = {"user_id": "00000000-0000-0000-0000-000000000002", **request.payload}
+    async def create(self, request: UserRepositoryCreateRequest) -> dict[str, Any]:
+        payload = request.payload.model_dump(exclude_unset=True, mode="json")
+        item = {"user_id": "00000000-0000-0000-0000-000000000002", **payload}
         self.data["users"].append(item)
         return item
 
-    async def update(self, request: RepositoryUpdateItemRequest) -> dict[str, Any] | None:
-        item = await self.get(RepositoryItemRequest(item_id=request.item_id))
+    async def update(self, request: UserRepositoryUpdateRequest) -> dict[str, Any] | None:
+        item = await self.get(UserRepositoryGetRequest(user_id=request.user_id))
         if item is not None:
-            item.update(request.payload)
+            item.update(request.payload.model_dump(exclude_unset=True, mode="json"))
         return item
 
-    async def delete(self, request: RepositoryItemRequest) -> dict[str, Any] | None:
-        return await self.get(request)
+    async def delete(self, request: UserRepositoryDeleteRequest) -> dict[str, Any] | None:
+        return await self.get(UserRepositoryGetRequest(user_id=request.user_id))
 
 
 def test_crud_hides_sensitive_fields_and_uses_spanish_errors() -> None:

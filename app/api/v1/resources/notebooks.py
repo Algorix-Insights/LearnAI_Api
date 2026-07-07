@@ -4,24 +4,23 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.dependencies import get_notebook_tags_use_case, get_notebooks_use_case
 from app.application.usecases import NotebookTagUseCase, NotebookUseCase
-from app.domain.schemas import (
-    CreateItemRequest,
-    CrudItemResponse,
-    CrudListResponse,
-    DeleteItemRequest,
-    ListItemsRequest,
+from app.domain.schemas import CrudItemResponse, CrudListResponse
+from app.domain.schemas.entities import NotebookCreate, NotebookUpdate
+from app.domain.schemas.resources.notebooks import (
+    NotebookCreateRequest,
+    NotebookDeleteRequest,
+    NotebookListRequest,
     NotebookPath,
     NotebookTagPath,
-    UpdateItemRequest,
+    NotebookUpdateRequest,
 )
-from app.domain.schemas.entities import NotebookCreate, NotebookUpdate
 
 router = APIRouter(prefix="/notebooks", tags=["notebooks"])
 
 
 @router.get("", response_model=CrudListResponse)
 async def list_notebooks(
-    request: Annotated[ListItemsRequest, Depends()],
+    request: Annotated[NotebookListRequest, Depends()],
     use_case: Annotated[NotebookUseCase, Depends(get_notebooks_use_case)],
 ) -> CrudListResponse:
     return await use_case.list(request)
@@ -32,7 +31,7 @@ async def create_notebook(
     payload: NotebookCreate,
     use_case: Annotated[NotebookUseCase, Depends(get_notebooks_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.create(CreateItemRequest(payload=payload))
+    return await use_case.create(NotebookCreateRequest(payload=payload))
 
 
 @router.get("/{notebook_id}", response_model=CrudItemResponse)
@@ -40,7 +39,7 @@ async def get_notebook(
     path: Annotated[NotebookPath, Depends()],
     use_case: Annotated[NotebookUseCase, Depends(get_notebooks_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.get(path.to_item_request())
+    return await use_case.get(path)
 
 
 @router.patch("/{notebook_id}", response_model=CrudItemResponse)
@@ -50,7 +49,7 @@ async def update_notebook(
     use_case: Annotated[NotebookUseCase, Depends(get_notebooks_use_case)],
 ) -> CrudItemResponse:
     return await use_case.update(
-        UpdateItemRequest(item_id=str(path.notebook_id), payload=payload)
+        NotebookUpdateRequest(notebook_id=path.notebook_id, payload=payload)
     )
 
 
@@ -59,7 +58,7 @@ async def delete_notebook(
     path: Annotated[NotebookPath, Depends()],
     use_case: Annotated[NotebookUseCase, Depends(get_notebooks_use_case)],
 ) -> CrudItemResponse:
-    return await use_case.delete(DeleteItemRequest(item_id=str(path.notebook_id)))
+    return await use_case.delete(NotebookDeleteRequest(notebook_id=path.notebook_id))
 
 
 @router.post(
