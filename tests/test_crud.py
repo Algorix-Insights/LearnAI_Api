@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_users_use_case
 from app.application.usecases import UserUseCase
+from app.core.query import get_api_query_params
 from app.domain.schemas.resources.users import (
     UserRepositoryCreateRequest,
     UserRepositoryDeleteRequest,
@@ -24,12 +25,27 @@ class FakeCrudRepository:
                     "last_name": "Lovelace",
                     "email": "ada@example.test",
                     "hash_password": "secret",
+                },
+                {
+                    "user_id": "00000000-0000-0000-0000-000000000003",
+                    "name": "Linus",
+                    "last_name": "Torvalds",
+                    "email": "linus@example.test",
+                    "hash_password": "secret",
                 }
             ]
         }
 
     async def list(self, request: UserRepositoryListRequest) -> list[dict[str, Any]]:
-        return self.data["users"][request.offset : request.offset + request.limit]
+        items = self.data["users"]
+        api_query = get_api_query_params()
+        if api_query is not None:
+            for item_filter in api_query.filters:
+                if item_filter.operator == "eq":
+                    items = [
+                        item for item in items if str(item.get(item_filter.field)) == item_filter.value
+                    ]
+        return items[request.offset : request.offset + request.limit]
 
     async def get(self, request: UserRepositoryGetRequest) -> dict[str, Any] | None:
         for item in self.data["users"]:
@@ -83,3 +99,28 @@ def test_crud_hides_sensitive_fields_and_uses_spanish_errors() -> None:
     assert missing_response.json()["detail"] == "Recurso no encontrado."
 
     app.dependency_overrides.clear()
+
+
+def test_crud_supports_core_pagination_and_filters() -> None:
+    repository = FakeCrudRepository()
+    app.dependency_overrides[get_users_use_case] = lambda: UserUseCase(repository)
+    client = TestClient(app)
+
+    response = client.get("/api/v1/users?page=1&per_page=1&name=Linus")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 1
+    assert body["offset"] == 0
+    assert [item["name"] for item in body["data"]] == ["Linus"]
+
+    app.dependency_overrides.clear()
+
+
+def test_crud_rejects_invalid_core_pagination() -> None:
+    client = TestClient(app)
+
+    response = client.get("/api/v1/users?limit=0")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "La solicitud no es valida."

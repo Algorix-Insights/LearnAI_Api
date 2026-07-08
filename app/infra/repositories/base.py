@@ -3,6 +3,7 @@ from typing import Any
 from supabase import Client
 
 from app.core.exceptions import RepositoryError
+from app.core.query import ApiFilter, get_api_query_params
 from app.infra.db.supabase import get_supabase_client
 
 
@@ -12,12 +13,18 @@ class BaseSupabaseRepository:
 
     async def _list(self, table_name: str, limit: int, offset: int) -> list[dict[str, Any]]:
         try:
+            api_query = get_api_query_params()
+            if api_query is not None:
+                limit = api_query.limit
+                offset = api_query.offset
+
             response = (
                 self.client.table(table_name)
                 .select("*")
-                .range(offset, offset + limit - 1)
-                .execute()
             )
+            for item_filter in api_query.filters if api_query is not None else ():
+                response = self._apply_filter(response, item_filter)
+            response = response.range(offset, offset + limit - 1).execute()
         except Exception as exc:
             raise RepositoryError("listar") from exc
         return response.data or []
@@ -90,3 +97,29 @@ class BaseSupabaseRepository:
         if not data:
             return None
         return data[0]
+
+    def _apply_filter(self, query: Any, item_filter: ApiFilter) -> Any:
+        field = item_filter.field
+        value = item_filter.value
+        match item_filter.operator:
+            case "eq":
+                return query.eq(field, value)
+            case "neq":
+                return query.neq(field, value)
+            case "gt":
+                return query.gt(field, value)
+            case "gte":
+                return query.gte(field, value)
+            case "lt":
+                return query.lt(field, value)
+            case "lte":
+                return query.lte(field, value)
+            case "like":
+                return query.like(field, value)
+            case "ilike":
+                return query.ilike(field, value)
+            case "in":
+                return query.in_(field, value)
+            case "is":
+                return query.is_(field, value)
+        return query
