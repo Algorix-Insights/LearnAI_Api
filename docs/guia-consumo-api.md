@@ -62,10 +62,10 @@ Errores de validacion:
 ```json
 {
   "detail": "La solicitud no es valida.",
-  "errores": [
+  "errors": [
     {
-      "campo": "body.email",
-      "tipo": "missing"
+      "field": "body.email",
+      "type": "missing"
     }
   ]
 }
@@ -86,11 +86,43 @@ Los listados aceptan query params:
 
 - `limit`: entero entre `1` y `500`. Default: `100`.
 - `offset`: entero mayor o igual a `0`. Default: `0`.
+- `page`: entero mayor o igual a `1`. Si se envia, calcula `offset`.
+- `per_page`: entero entre `1` y `500`. Alias de `limit` cuando se usa con `page`.
 
 Ejemplo:
 
 ```bash
 curl "http://127.0.0.1:8000/api/v1/notebooks?limit=50&offset=0"
+```
+
+Tambien se puede paginar por pagina:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/notebooks?page=2&per_page=25"
+```
+
+## Filtros
+
+Los listados aceptan filtros genericos por query params. El filtro simple usa igualdad:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/users?status=active"
+```
+
+Los operadores soportados usan el formato `campo__operador=valor`:
+
+- `eq`: igual. Tambien es el default si no se envia operador.
+- `neq`: distinto.
+- `gt`, `gte`, `lt`, `lte`: comparaciones.
+- `like`, `ilike`: patrones PostgREST.
+- `in`: lista separada por coma.
+- `is`: `null`, `true` o `false`.
+
+Ejemplos:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/notebooks?grade__gte=3&status__in=active,draft"
+curl "http://127.0.0.1:8000/api/v1/users?email__ilike=%25@example.com"
 ```
 
 ## CRUD por recurso
