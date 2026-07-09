@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.domain.schemas.resources.document_chunks import (
     DocumentChunkRepositoryCreateRequest,
     DocumentChunkRepositoryDeleteRequest,
