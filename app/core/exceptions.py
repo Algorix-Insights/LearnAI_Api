@@ -20,6 +20,16 @@ class EmptyPayloadError(ApiError):
         super().__init__(400, "Debe enviar al menos un campo para actualizar.")
 
 
+class BadRequestError(ApiError):
+    def __init__(self, message: str = "Solicitud invalida.") -> None:
+        super().__init__(400, message)
+
+
+class ForbiddenError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(403, "No tienes permisos para acceder a este recurso.")
+
+
 class RepositoryError(ApiError):
     def __init__(self, action: str) -> None:
         super().__init__(500, f"No se pudo {action} el registro.")
