@@ -1,4 +1,5 @@
 from app.infra.repositories.attempts import AttemptRepository
+from app.infra.repositories.auth import SupabaseAuthRepository
 from app.infra.repositories.document_chunks import DocumentChunkRepository
 from app.infra.repositories.documents import DocumentRepository
 from app.infra.repositories.exams import ExamQuestionRepository, ExamRepository
@@ -14,6 +15,7 @@ from app.infra.repositories.users import PersonalNotebookRepository, UserReposit
 
 __all__ = [
     "AttemptRepository",
+    "SupabaseAuthRepository",
     "DocumentChunkRepository",
     "DocumentRepository",
     "ExamQuestionRepository",

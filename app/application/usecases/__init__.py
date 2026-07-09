@@ -1,4 +1,5 @@
 from app.application.usecases.attempts import AttemptUseCase
+from app.application.usecases.auth import AuthUseCase
 from app.application.usecases.document_chunks import DocumentChunkUseCase
 from app.application.usecases.documents import DocumentUseCase
 from app.application.usecases.exams import ExamUseCase
@@ -20,6 +21,7 @@ from app.application.usecases.users import UserUseCase
 
 __all__ = [
     "AttemptUseCase",
+    "AuthUseCase",
     "DocumentChunkUseCase",
     "DocumentUseCase",
     "ExamUseCase",
