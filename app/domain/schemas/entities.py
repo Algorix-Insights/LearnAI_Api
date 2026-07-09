@@ -26,6 +26,9 @@ class UserCreate(StrictSchema):
     streak: int = Field(default=0, ge=0)
     status: Literal["active", "inactive", "suspended"] = "active"
     last_login: datetime | None = None
+    profile_image_path: str | None = None
+    profile_image_mime_type: str | None = None
+    profile_image_size_bytes: int | None = Field(default=None, ge=0)
 
 
 class UserUpdate(StrictSchema):
@@ -36,6 +39,9 @@ class UserUpdate(StrictSchema):
     streak: int | None = Field(default=None, ge=0)
     status: Literal["active", "inactive", "suspended"] | None = None
     last_login: datetime | None = None
+    profile_image_path: str | None = None
+    profile_image_mime_type: str | None = None
+    profile_image_size_bytes: int | None = Field(default=None, ge=0)
 
 
 class NotebookCreate(StrictSchema):
@@ -87,11 +93,11 @@ class StudyMemberUpdate(StrictSchema):
 class MemberRoomCreate(StrictSchema):
     member_id: UUID
     room_id: UUID
-    role: Literal["member", "admin"] = "member"
+    role: Literal["user", "admin"] = "user"
 
 
 class MemberRoomUpdate(StrictSchema):
-    role: Literal["member", "admin"] | None = None
+    role: Literal["user", "admin"] | None = None
 
 
 class PersonalNotebookCreate(StrictSchema):

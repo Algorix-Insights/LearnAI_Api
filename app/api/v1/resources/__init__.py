@@ -6,6 +6,7 @@ from app.api.v1.resources.flashcards import router as flashcards_router
 from app.api.v1.resources.notebooks import router as notebooks_router
 from app.api.v1.resources.question_options import router as question_options_router
 from app.api.v1.resources.questions import router as questions_router
+from app.api.v1.resources.rag import router as rag_router
 from app.api.v1.resources.rooms import router as rooms_router
 from app.api.v1.resources.study_members import router as study_members_router
 from app.api.v1.resources.tags import router as tags_router
@@ -26,4 +27,5 @@ RESOURCE_ROUTERS = [
     documents_router,
     document_chunks_router,
     tags_router,
+    rag_router,
 ]

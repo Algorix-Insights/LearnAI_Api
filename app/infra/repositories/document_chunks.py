@@ -5,6 +5,7 @@ from app.domain.schemas.resources.document_chunks import (
     DocumentChunkRepositoryListRequest,
     DocumentChunkRepositoryUpdateRequest,
 )
+from app.core.exceptions import RepositoryError
 from app.infra.repositories.base import BaseSupabaseRepository
 
 
@@ -21,6 +22,37 @@ class DocumentChunkRepository(BaseSupabaseRepository):
     async def create(self, request: DocumentChunkRepositoryCreateRequest) -> dict:
         payload = request.payload.model_dump(exclude_unset=True, mode="json")
         return await self._create(self.table_name, payload)
+
+    async def create_many(self, payloads: list[dict]) -> list[dict]:
+        try:
+            response = self.client.table(self.table_name).insert(payloads).execute()
+        except Exception as exc:
+            raise RepositoryError("crear") from exc
+        return response.data or []
+
+    async def delete_for_document(self, document_id: str) -> list[dict]:
+        try:
+            response = (
+                self.client.table(self.table_name)
+                .delete()
+                .eq("document_id", document_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise RepositoryError("eliminar") from exc
+        return response.data or []
+
+    async def count_for_document(self, document_id: str) -> int:
+        try:
+            response = (
+                self.client.table(self.table_name)
+                .select("chunk_id")
+                .eq("document_id", document_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise RepositoryError("contar") from exc
+        return len(response.data or [])
 
     async def update(self, request: DocumentChunkRepositoryUpdateRequest) -> dict | None:
         payload = request.payload.model_dump(exclude_unset=True, mode="json")

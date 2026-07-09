@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     openrouter_http_referer: str | None = None
     openrouter_app_title: str = "LearnIA API"
     openrouter_app_categories: str | None = None
+    openrouter_chat_model: str = "openai/gpt-5.2"
+    openrouter_embedding_model: str = "openai/text-embedding-3-small"
+    documents_bucket: str = "documents"
+    profile_bucket: str = "profile"
+    rag_match_limit: int = 6
 
 
 @lru_cache

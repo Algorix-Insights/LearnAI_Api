@@ -12,6 +12,7 @@ from app.application.usecases.questions import QuestionUseCase
 from app.application.usecases.room_members import RoomMemberUseCase
 from app.application.usecases.room_notebooks import RoomNotebookUseCase
 from app.application.usecases.rooms import RoomUseCase
+from app.application.usecases.rag import RagUseCase
 from app.application.usecases.study_members import StudyMemberUseCase
 from app.application.usecases.tags import TagUseCase
 from app.application.usecases.user_answers import UserAnswerUseCase
@@ -32,6 +33,7 @@ __all__ = [
     "RoomMemberUseCase",
     "RoomNotebookUseCase",
     "RoomUseCase",
+    "RagUseCase",
     "StudyMemberUseCase",
     "TagUseCase",
     "UserAnswerUseCase",
