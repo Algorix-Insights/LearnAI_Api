@@ -1,5 +1,11 @@
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 from app.application.usecases import (
     AttemptUseCase,
+    AuthUseCase,
     DocumentChunkUseCase,
     DocumentUseCase,
     ExamUseCase,
@@ -19,6 +25,8 @@ from app.application.usecases import (
     UserAnswerUseCase,
     UserUseCase,
 )
+from app.core.exceptions import UnauthorizedError
+from app.domain.schemas.resources.users import UserRead
 from app.infra.repositories import (
     AttemptRepository,
     DocumentChunkRepository,
@@ -35,6 +43,7 @@ from app.infra.repositories import (
     RoomNotebookRepository,
     RoomRepository,
     StudyMemberRepository,
+    SupabaseAuthRepository,
     TagRepository,
     UserAnswerRepository,
     UserRepository,
@@ -47,6 +56,8 @@ from app.infra.repositories.rag import (
     RagSearchRepository,
 )
 from app.infra.storage import SupabaseStorage
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_users_use_case() -> UserUseCase:
@@ -120,6 +131,18 @@ def get_personal_notebooks_use_case() -> PersonalNotebookUseCase:
 def get_room_notebooks_use_case() -> RoomNotebookUseCase:
     return RoomNotebookUseCase(RoomNotebookRepository())
 
+
+def get_auth_use_case() -> AuthUseCase:
+    return AuthUseCase(SupabaseAuthRepository(), UserRepository())
+
+
+async def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    auth_use_case: Annotated[AuthUseCase, Depends(get_auth_use_case)],
+) -> UserRead:
+    if not credentials or not credentials.credentials:
+        raise UnauthorizedError("No autorizado. Se requiere header Authorization: Bearer <token>.")
+    return await auth_use_case.get_current_user_profile(credentials.credentials)
 
 def get_rag_use_case() -> RagUseCase:
     settings = get_settings()

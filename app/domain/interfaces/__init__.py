@@ -1,4 +1,5 @@
 from app.domain.interfaces.attempts import AttemptRepository
+from app.domain.interfaces.auth import AuthRepository
 from app.domain.interfaces.document_chunks import DocumentChunkRepository
 from app.domain.interfaces.documents import DocumentRepository
 from app.domain.interfaces.exams import ExamQuestionRepository, ExamRepository
@@ -14,6 +15,7 @@ from app.domain.interfaces.users import PersonalNotebookRepository, UserReposito
 
 __all__ = [
     "AttemptRepository",
+    "AuthRepository",
     "DocumentChunkRepository",
     "DocumentRepository",
     "ExamQuestionRepository",
