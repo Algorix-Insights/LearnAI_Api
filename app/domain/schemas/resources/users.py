@@ -19,6 +19,9 @@ class UserRead(BaseModel):
     email: str | None = None
     streak: int | None = None
     status: str | None = None
+    profile_image_path: str | None = None
+    profile_image_mime_type: str | None = None
+    profile_image_size_bytes: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     last_login: datetime | None = None

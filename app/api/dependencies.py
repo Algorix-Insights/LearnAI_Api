@@ -13,6 +13,7 @@ from app.application.usecases import (
     RoomMemberUseCase,
     RoomNotebookUseCase,
     RoomUseCase,
+    RagUseCase,
     StudyMemberUseCase,
     TagUseCase,
     UserAnswerUseCase,
@@ -38,6 +39,14 @@ from app.infra.repositories import (
     UserAnswerRepository,
     UserRepository,
 )
+from app.core.config import get_settings
+from app.infra.clients import OpenRouterClient
+from app.infra.repositories.rag import (
+    ConversationRepository,
+    NotebookAccessRepository,
+    RagSearchRepository,
+)
+from app.infra.storage import SupabaseStorage
 
 
 def get_users_use_case() -> UserUseCase:
@@ -110,3 +119,23 @@ def get_personal_notebooks_use_case() -> PersonalNotebookUseCase:
 
 def get_room_notebooks_use_case() -> RoomNotebookUseCase:
     return RoomNotebookUseCase(RoomNotebookRepository())
+
+
+def get_rag_use_case() -> RagUseCase:
+    settings = get_settings()
+    return RagUseCase(
+        documents=DocumentRepository(),
+        chunks=DocumentChunkRepository(),
+        conversations=ConversationRepository(),
+        search=RagSearchRepository(),
+        access=NotebookAccessRepository(),
+        users=UserRepository(),
+        storage=SupabaseStorage(),
+        llm=OpenRouterClient(
+            settings.openrouter_api_key or "",
+            http_referer=settings.openrouter_http_referer,
+            app_title=settings.openrouter_app_title,
+            app_categories=settings.openrouter_app_categories,
+        ),
+        settings=settings,
+    )
