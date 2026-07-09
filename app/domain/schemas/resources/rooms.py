@@ -74,7 +74,7 @@ class RoomRepositoryDeleteRequest(RoomDeleteRequest):
 
 class AddRoomMemberRequest(RoomSchema):
     member_id: UUID
-    role: str = Field(default="member", pattern="^(member|admin)$")
+    role: str = Field(default="user", pattern="^(user|admin)$")
 
 
 class RoomMemberPath(RoomSchema):
@@ -85,7 +85,7 @@ class RoomMemberPath(RoomSchema):
 class RoomMemberRepositoryCreateRequest(RoomSchema):
     room_id: UUID
     member_id: UUID
-    role: str = Field(default="member", pattern="^(member|admin)$")
+    role: str = Field(default="user", pattern="^(user|admin)$")
 
 
 class RoomMemberRepositoryDeleteRequest(RoomMemberPath):

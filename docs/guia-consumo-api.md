@@ -1,6 +1,6 @@
 # Guia de consumo de API
 
-Estado actual: la aplicacion expone solamente CRUD y operaciones de relacion entre agregados. Las rutas de RAG, generacion con IA, autenticacion fina y flujos asincronos todavia no forman parte de esta guia.
+Estado actual: la aplicacion expone CRUD, relaciones entre agregados, upload de archivos, vectorizacion RAG sincrona y conversaciones con LLM por notebook. La autenticacion fina todavia no forma parte de esta guia; los endpoints multitenant reciben `user_id` para validar acceso a notebooks personales o notebooks de study rooms.
 
 ## Base
 
@@ -9,6 +9,7 @@ Estado actual: la aplicacion expone solamente CRUD y operaciones de relacion ent
 - Swagger/OpenAPI: `/docs`
 - Health checks: `/health` y `/api/v1/health`
 - Content-Type esperado: `application/json`
+- Uploads: `multipart/form-data`
 
 Ejemplo:
 
@@ -76,6 +77,7 @@ Codigos principales:
 - `200`: consulta, actualizacion o eliminacion correcta.
 - `201`: creacion correcta.
 - `400`: payload vacio en operaciones `PATCH`.
+- `403`: usuario sin acceso al notebook solicitado.
 - `404`: recurso no encontrado.
 - `422`: request invalido por contrato Pydantic.
 - `500`: error de persistencia.
@@ -162,9 +164,14 @@ Body para `POST /rooms/{room_id}/members`:
 ```json
 {
   "member_id": "00000000-0000-0000-0000-000000000000",
-  "role": "member"
+  "role": "user"
 }
 ```
+
+Roles de study rooms:
+
+- `admin`: administra la sala y sus notebooks.
+- `user`: miembro regular de la sala.
 
 Body para `POST /rooms/{room_id}/notebooks`:
 
@@ -227,6 +234,163 @@ curl -X POST http://127.0.0.1:8000/api/v1/documents \
   }'
 ```
 
+## RAG y archivos
+
+Variables requeridas:
+
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `OPENROUTER_API_KEY`
+
+Variables opcionales:
+
+- `OPENROUTER_CHAT_MODEL`: default `openai/gpt-5.2`
+- `OPENROUTER_EMBEDDING_MODEL`: default `openai/text-embedding-3-small`
+- `DOCUMENTS_BUCKET`: default `documents`
+- `PROFILE_BUCKET`: default `profile`
+- `RAG_MATCH_LIMIT`: default `6`
+
+La migracion `003_rag_storage_multitenant.sql` crea los buckets `documents` y `profile`, agrega metadata de foto en `users`, normaliza roles `user/admin` y crea `match_document_chunks` para pgvector.
+
+### Subir documento a notebook
+
+`POST /api/v1/notebooks/{notebook_id}/documents/upload`
+
+Formato: `multipart/form-data`
+
+Campos:
+
+- `user_id`: UUID del usuario que sube el documento.
+- `file`: archivo `.pdf`, `.txt` o `.md`.
+- `description`: opcional.
+
+Flujo interno:
+
+1. Valida acceso del usuario al notebook.
+2. Sube archivo al bucket `documents`.
+3. Extrae texto.
+4. Divide en chunks.
+5. Genera embeddings con OpenRouter.
+6. Guarda chunks en `document_chunks`.
+7. Marca documento como `completed` o `failed`.
+
+Ejemplo:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/notebooks/00000000-0000-0000-0000-000000000000/documents/upload \
+  -F "user_id=00000000-0000-0000-0000-000000000001" \
+  -F "description=Apuntes de biologia" \
+  -F "file=@./apuntes.md;type=text/markdown"
+```
+
+Respuesta:
+
+```json
+{
+  "data": {
+    "document_id": "00000000-0000-0000-0000-000000000000",
+    "notebook_id": "00000000-0000-0000-0000-000000000000",
+    "name": "apuntes.md",
+    "source_type": "markdown",
+    "storage_path": "00000000-0000-0000-0000-000000000000/archivo-apuntes.md",
+    "processing_status": "completed",
+    "mime_type": "text/markdown",
+    "content_hash": "hash",
+    "size_bytes": 1200,
+    "chunks_count": 3
+  }
+}
+```
+
+### Subir foto de perfil
+
+`POST /api/v1/users/{user_id}/profile-photo`
+
+Formato: `multipart/form-data`
+
+Archivos permitidos: `image/jpeg`, `image/png`, `image/webp`, `image/gif`.
+
+Ejemplo:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/users/00000000-0000-0000-0000-000000000001/profile-photo \
+  -F "file=@./avatar.png;type=image/png"
+```
+
+Respuesta:
+
+```json
+{
+  "data": {
+    "user_id": "00000000-0000-0000-0000-000000000001",
+    "profile_image_path": "00000000-0000-0000-0000-000000000001/profile.png",
+    "profile_image_mime_type": "image/png",
+    "profile_image_size_bytes": 102400
+  }
+}
+```
+
+## Conversaciones RAG
+
+Cada notebook puede tener varias conversaciones. Cada mensaje del usuario busca contexto en los documentos vectorizados de ese notebook y el LLM responde con base en esos chunks.
+
+Crear conversacion:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/notebooks/00000000-0000-0000-0000-000000000000/conversations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "00000000-0000-0000-0000-000000000001",
+    "name": "Dudas de biologia"
+  }'
+```
+
+Listar conversaciones de notebook:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/notebooks/00000000-0000-0000-0000-000000000000/conversations?user_id=00000000-0000-0000-0000-000000000001&limit=20&offset=0"
+```
+
+Enviar mensaje al LLM:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/conversations/00000000-0000-0000-0000-000000000000/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "00000000-0000-0000-0000-000000000001",
+    "content": "Explica la fotosintesis con base en mis apuntes"
+  }'
+```
+
+Respuesta:
+
+```json
+{
+  "data": {
+    "message_id": "00000000-0000-0000-0000-000000000000",
+    "conversation_id": "00000000-0000-0000-0000-000000000000",
+    "role": "assistant",
+    "content": "Respuesta del modelo con citas [1].",
+    "order_message": 2
+  },
+  "sources": [
+    {
+      "chunk_id": "00000000-0000-0000-0000-000000000000",
+      "document_id": "00000000-0000-0000-0000-000000000000",
+      "document_name": "apuntes.md",
+      "similarity": 0.91,
+      "content": "Fragmento usado como contexto"
+    }
+  ]
+}
+```
+
+Listar mensajes:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/conversations/00000000-0000-0000-0000-000000000000/messages?user_id=00000000-0000-0000-0000-000000000001&limit=50&offset=0"
+```
+
 Crear pregunta abierta:
 
 ```bash
@@ -248,6 +412,9 @@ curl -X POST http://127.0.0.1:8000/api/v1/questions \
 - Un `user-answer` debe tener `selected_option_id` o `answer_text`, pero no ambos.
 - En documentos tipo `note`, `content_text` es obligatorio.
 - En documentos con origen distinto de `note`, `storage_path` es obligatorio.
+- Upload RAG solo acepta `pdf`, `txt` y `md`.
+- Chat RAG requiere que el usuario tenga acceso al notebook de la conversacion.
+- Fotos de perfil solo aceptan `jpeg`, `png`, `webp` y `gif`.
 - `limit`, `offset`, ordenes, puntajes y tiempos respetan limites definidos en Pydantic.
 
 Para el detalle exacto de campos por recurso, usar `/docs` o revisar los contratos en `app/domain/schemas/entities.py` y `app/domain/schemas/resources/`.
