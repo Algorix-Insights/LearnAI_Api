@@ -19,10 +19,11 @@ class HealthUpdate(StrictSchema):
 
 
 class UserCreate(StrictSchema):
+    user_id: UUID | None = None
     name: str
     last_name: str
     email: str
-    hash_password: str
+    hash_password: str | None = None
     streak: int = Field(default=0, ge=0)
     status: Literal["active", "inactive", "suspended"] = "active"
     last_login: datetime | None = None

@@ -1,4 +1,5 @@
 from app.api.v1.resources.attempts import router as attempts_router
+from app.api.v1.resources.auth import router as auth_router
 from app.api.v1.resources.document_chunks import router as document_chunks_router
 from app.api.v1.resources.documents import router as documents_router
 from app.api.v1.resources.exams import router as exams_router
@@ -13,6 +14,7 @@ from app.api.v1.resources.user_answers import router as user_answers_router
 from app.api.v1.resources.users import router as users_router
 
 RESOURCE_ROUTERS = [
+    auth_router,
     users_router,
     notebooks_router,
     rooms_router,
