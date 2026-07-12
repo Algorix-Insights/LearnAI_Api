@@ -50,21 +50,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=app_settings.app_name,
         version=app_settings.app_version,
     )
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"], 
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
     
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(ValidationError, validation_error_handler)
+    
     app.add_middleware(ApiQueryMiddleware, api_prefix=app_settings.api_v1_prefix)
+    
     app.include_router(health_router)
     app.include_router(api_router, prefix=app_settings.api_v1_prefix)
+
+    origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,  
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
     return app
 
 
