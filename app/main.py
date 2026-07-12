@@ -8,6 +8,7 @@ from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ApiError
 from app.core.middlewares import ApiQueryMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 
 async def api_error_handler(_: object, exc: ApiError) -> JSONResponse:
@@ -49,6 +50,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=app_settings.app_name,
         version=app_settings.app_version,
     )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  
+        allow_credentials=True,
+        allow_methods=["*"], 
+        allow_headers=["*"], 
+    )
+    
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(ValidationError, validation_error_handler)
