@@ -11,6 +11,7 @@ from time import monotonic
 
 from fastapi import Request
 
+from app.core.config import get_settings
 from app.core.exceptions import ApiError, AuthRateLimitError
 
 
@@ -117,6 +118,9 @@ async def _account_digest(request: Request) -> str | None:
 
 def auth_rate_limit(policy: AuthRateLimitPolicy):
     async def dependency(request: Request) -> None:
+        if not get_settings().auth_rate_limit_enabled:
+            return
+
         client_host = request.client.host if request.client else "unknown"
         buckets = [
             RateLimitBucket(

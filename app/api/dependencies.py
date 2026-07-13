@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import Depends
@@ -30,7 +31,7 @@ from app.application.usecases.exam_attempts import ExamAttemptWorkflowUseCase
 from app.application.usecases.user_profile import UserProfileUseCase
 from app.application.usecases.user_statistics import UserStatisticsUseCase
 from app.core.config import get_settings
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import AuthUnavailableError, UnauthorizedError
 from app.domain.schemas.resources.users import UserRead
 from app.infra.agents.answer_verifier import OpenRouterAnswerVerifier
 from app.infra.clients import OpenRouterClient
@@ -70,6 +71,7 @@ from app.infra.repositories.user_statistics import UserStatisticsRepository
 from app.infra.storage import SupabaseStorage
 
 bearer_scheme = HTTPBearer(auto_error=False)
+logger = logging.getLogger("learnia.auth")
 
 
 def get_user_data_client(
@@ -225,10 +227,14 @@ def get_user_statistics_use_case(
 
 
 def get_auth_use_case() -> AuthUseCase:
-    return AuthUseCase(
-        SupabaseAuthRepository(),
-        UserRepository(get_supabase_admin_client()),
-    )
+    try:
+        return AuthUseCase(
+            SupabaseAuthRepository(),
+            UserRepository(get_supabase_admin_client()),
+        )
+    except Exception as exc:
+        logger.exception("auth_client_initialization_failed")
+        raise AuthUnavailableError() from exc
 
 
 async def get_current_user(

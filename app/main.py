@@ -70,13 +70,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_router, prefix=app_settings.api_v1_prefix)
 
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # app.add_middleware(
+    #     CORSMiddleware,
+    #     allow_origins=["*"],  
+    #     allow_credentials=False,
+    #     allow_methods=["*"],
+    #     allow_headers=["*"],
+    # )
     
     return app
 

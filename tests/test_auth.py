@@ -1,7 +1,9 @@
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi.testclient import TestClient
 
+from app.api import auth_rate_limit as auth_rate_limit_module
 from app.api.auth_rate_limit import clear_auth_rate_limits
 from app.api.dependencies import get_auth_use_case, get_users_use_case
 from app.application.usecases.auth import AuthUseCase
@@ -245,6 +247,26 @@ def test_auth_login_success_and_failure() -> None:
     app.dependency_overrides.clear()
 
 
+def test_auth_rate_limit_is_disabled_by_default(monkeypatch) -> None:
+    clear_auth_rate_limits()
+    monkeypatch.setattr(
+        auth_rate_limit_module,
+        "get_settings",
+        lambda: SimpleNamespace(auth_rate_limit_enabled=False),
+    )
+    client, _, _ = _setup_client()
+
+    for _ in range(25):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": "ada@example.test", "password": "secret_password"},
+        )
+        assert response.status_code == 200
+
+    clear_auth_rate_limits()
+    app.dependency_overrides.clear()
+
+
 def test_auth_otp_flow() -> None:
     client, _, _ = _setup_client()
 
@@ -342,8 +364,13 @@ def test_auth_register_without_password() -> None:
     app.dependency_overrides.clear()
 
 
-def test_auth_account_limit_cannot_be_bypassed_with_padded_json() -> None:
+def test_auth_account_limit_cannot_be_bypassed_with_padded_json(monkeypatch) -> None:
     clear_auth_rate_limits()
+    monkeypatch.setattr(
+        auth_rate_limit_module,
+        "get_settings",
+        lambda: SimpleNamespace(auth_rate_limit_enabled=True),
+    )
     client, _, _ = _setup_client()
     payload = (
         '{"email":"ada@example.test","should_create_user":false}'
