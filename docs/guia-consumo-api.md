@@ -5,13 +5,20 @@ Esta guía describe el contrato público que debe usar frontend para perfil, cua
 ## Base y autenticación
 
 - Base local: `http://127.0.0.1:8000`
+- Base producción: `https://learnaiapi.algorixinsights.com`
 - Prefijo: `/api/v1`
 - OpenAPI: `/docs`
 - Health checks: `/health` y `/api/v1/health`
 - JSON: `Content-Type: application/json`
 - Archivos: `multipart/form-data`
 
-Salvo `/auth/*` y los health checks, todas las rutas requieren el access token de Supabase:
+El frontend debe llamar directamente a la URL HTTPS final. No debe iniciar una petición HTTP
+local que redirija a producción, porque el preflight CORS y el método pueden perderse durante
+la redirección.
+
+Sólo health, `register`, `login`, `otp`, `verify-otp` y `forgot-password` se consumen sin
+sesión. `reset-password`, `logout`, `auth/me` y todos los recursos funcionales requieren el
+access token de Supabase:
 
 ```http
 Authorization: Bearer <access_token>
@@ -103,6 +110,240 @@ Códigos relevantes:
 - `422`: payload no cumple el contrato.
 - `429`: límite de frecuencia; respeta el header `Retry-After` y no hagas reintentos inmediatos.
 - `503`: autenticación temporalmente no disponible.
+
+## Cliente frontend recomendado
+
+La API entrega tokens de Supabase Auth, pero no publica un endpoint propio para refrescarlos.
+Después de `register`, `login` o `verify-otp`, instala la pareja de tokens en Supabase JS para
+que su cliente mantenga y renueve la sesión. Supabase documenta `setSession` en
+<https://supabase.com/docs/reference/javascript/auth-setsession>.
+
+```ts
+// lib/api.ts
+import axios from "axios";
+import { createClient } from "@supabase/supabase-js";
+
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+);
+
+export const api = axios.create({
+  baseURL: `${process.env.NEXT_PUBLIC_API_URL}/api/v1`,
+  timeout: 120_000, // uploads y generación RAG son síncronos
+  headers: { Accept: "application/json" },
+});
+
+api.interceptors.request.use(async (config) => {
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  return config;
+});
+
+export async function installAuthSession(auth: {
+  access_token: string;
+  refresh_token?: string | null;
+}) {
+  if (!auth.access_token || !auth.refresh_token) return;
+  const { error } = await supabase.auth.setSession({
+    access_token: auth.access_token,
+    refresh_token: auth.refresh_token,
+  });
+  if (error) throw error;
+}
+```
+
+Variables del frontend:
+
+```dotenv
+NEXT_PUBLIC_API_URL=https://learnaiapi.algorixinsights.com
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-key>
+```
+
+Ejemplo de login:
+
+```ts
+const response = await api.post("/auth/login", { email, password });
+await installAuthSession(response.data.data);
+const profile = await api.get("/users/me");
+```
+
+Reglas del cliente:
+
+- Extrae el recurso desde `response.data.data`.
+- En un listado también conserva `response.data.limit` y `response.data.offset`.
+- En `401`, intenta renovar la sesión una sola vez o redirige a login. Evita bucles infinitos.
+- En `429`, lee `Retry-After`, deshabilita temporalmente la acción y no reintentes de inmediato.
+- No reintentes automáticamente `POST`, `PUT`, `PATCH` o `DELETE`, salvo que el flujo indique
+  idempotencia.
+- Para `FormData`, deja que el navegador genere el `Content-Type` con su boundary.
+- Nunca expongas `SUPABASE_SECRET_KEY`, `OPENROUTER_API_KEY` ni credenciales SMTP en frontend.
+
+## Paginación y filtros
+
+Los listados aceptan `limit=1..500` y `offset>=0`. También se admite la alternativa
+`page>=1&per_page=1..500`.
+
+```http
+GET /api/v1/notebooks?limit=20&offset=0
+GET /api/v1/notebooks?page=2&per_page=20
+```
+
+El middleware reconoce filtros con `campo__operador=valor`. Sin sufijo se usa `eq`.
+
+| Operador | Significado                         | Ejemplo                         |
+| -------- | ----------------------------------- | ------------------------------- |
+| `eq`     | Igual                               | `status=active`                 |
+| `neq`    | Distinto                            | `status__neq=deleted`           |
+| `gt/gte` | Mayor / mayor o igual               | `grade__gte=70`                 |
+| `lt/lte` | Menor / menor o igual               | `due_date__lte=2026-07-31`      |
+| `like`   | Patrón sensible a mayúsculas        | `name__like=%Algoritmos%`       |
+| `ilike`  | Patrón sin distinguir mayúsculas    | `name__ilike=%algoritmos%`      |
+| `in`     | Cualquiera de varios valores        | `status__in=active,archived`    |
+| `is`     | `null`, `true` o `false`            | `due_date__is=null`             |
+
+Usa únicamente campos que pertenezcan al recurso consultado. Un filtro desconocido se rechaza
+o produce un error del repositorio.
+
+## Inventario completo de endpoints
+
+Este inventario corresponde al OpenAPI generado por el código actual. Todas las rutas, excepto
+health y las solicitudes iniciales de autenticación, requieren `Authorization: Bearer`.
+
+### Salud y autenticación
+
+| Método | Ruta                    | Body principal                                      | Uso |
+| ------ | ----------------------- | --------------------------------------------------- | --- |
+| GET    | `/health`               | —                                                   | Salud global. |
+| GET    | `/api/v1/health`        | —                                                   | Salud versionada. |
+| POST   | `/auth/register`        | `email`, `password?`, `name`, `last_name`           | Registro con contraseña o inicio passwordless. |
+| POST   | `/auth/login`           | `email`, `password`, `captcha_token?`               | Crea una sesión. |
+| POST   | `/auth/otp`             | `email`, `should_create_user=false`, `captcha_token?` | Envía un OTP al usuario existente. |
+| POST   | `/auth/verify-otp`      | `email+token` o `token_hash`, `type=email`           | Verifica el reto y crea sesión. |
+| POST   | `/auth/forgot-password` | `email`, `captcha_token?`                           | Envía recuperación. |
+| POST   | `/auth/reset-password`  | `password`                                          | Cambia contraseña; requiere token de recuperación. |
+| POST   | `/auth/logout`          | —                                                   | Revoca/cierra la sesión indicada. |
+| GET    | `/auth/me`              | —                                                   | Perfil asociado al JWT. |
+
+### Usuarios, perfil y dashboard
+
+| Método | Ruta                       | Body/query                         | Uso |
+| ------ | -------------------------- | ---------------------------------- | --- |
+| GET    | `/users/me`                | —                                  | Perfil propio. |
+| PATCH  | `/users/me`                | `name?`, `last_name?`              | Edita perfil propio. |
+| POST   | `/users/me/profile-photo`  | multipart `file`                   | Sube o reemplaza avatar. |
+| GET    | `/users/me/profile-photo`  | —                                  | Genera URL firmada del avatar. |
+| DELETE | `/users/me/profile-photo`  | —                                  | Elimina avatar. |
+| GET    | `/users/me/statistics`     | `period`, `timezone`               | Dashboard y estadísticas. |
+| POST   | `/users/me/learning-events`| body del evento + `Idempotency-Key`| Registra estudio/repaso. |
+| GET    | `/users`                   | `limit`, `offset`                  | Compatibilidad; sólo devuelve al actor. |
+| GET    | `/users/{user_id}`         | —                                  | Compatibilidad; sólo permite el perfil propio. |
+
+### Cuadernos y tags
+
+| Método | Ruta                                            | Body/query | Uso |
+| ------ | ----------------------------------------------- | ---------- | --- |
+| GET    | `/notebooks`                                    | paginación/filtros | Lista cuadernos accesibles. |
+| POST   | `/notebooks`                                    | `name`, `description?`, `summary?`, `is_favorite?`, `due_date?` | Crea cuaderno personal. |
+| GET    | `/notebooks/{notebook_id}`                      | — | Obtiene un cuaderno accesible. |
+| PATCH  | `/notebooks/{notebook_id}`                      | campos editables del cuaderno | Actualiza nombre, descripción, resumen, favorito, estado o fecha. |
+| DELETE | `/notebooks/{notebook_id}`                      | — | Elimina el cuaderno autorizado. |
+| POST   | `/notebooks/{notebook_id}/tags/{tag_id}`        | — | Asocia una tag. |
+| DELETE | `/notebooks/{notebook_id}/tags/{tag_id}`        | — | Desasocia una tag. |
+| GET    | `/tags`                                         | paginación | Lista tags globales y propias. |
+| POST   | `/tags`                                         | `name` | Crea una tag privada. |
+| GET    | `/tags/{tag_id}`                                | — | Obtiene una tag visible. |
+
+### Salas y miembros
+
+| Método | Ruta                                              | Body/query | Uso |
+| ------ | ------------------------------------------------- | ---------- | --- |
+| GET    | `/rooms`                                          | paginación/filtros | Lista salas accesibles. |
+| POST   | `/rooms`                                          | `name`, `description?` | Crea sala y registra al actor como admin. |
+| GET    | `/rooms/{room_id}`                                | — | Obtiene sala. |
+| PATCH  | `/rooms/{room_id}`                                | `name?`, `description?` | Actualiza sala. |
+| DELETE | `/rooms/{room_id}`                                | — | Elimina sala autorizada. |
+| POST   | `/rooms/{room_id}/members`                        | `member_id`, `role=user|admin` | Agrega miembro. |
+| DELETE | `/rooms/{room_id}/members/{member_id}`            | — | Quita miembro. |
+| POST   | `/rooms/{room_id}/notebooks`                      | `notebook_id` | Comparte cuaderno con sala. |
+| DELETE | `/rooms/{room_id}/notebooks/{notebook_id}`        | — | Retira cuaderno de sala. |
+| GET    | `/study-members`                                  | paginación | Lista identidades de estudio visibles. |
+| POST   | `/study-members`                                  | `user_id`, `nickname` | Crea identidad de estudio cuando aplique. |
+| GET    | `/study-members/{member_id}`                      | — | Obtiene identidad. |
+| PATCH  | `/study-members/{member_id}`                      | `nickname?` | Actualiza apodo. |
+| DELETE | `/study-members/{member_id}`                      | — | Elimina identidad autorizada. |
+
+### Documentos, chunks y conversaciones RAG
+
+| Método | Ruta                                                    | Body/query | Uso |
+| ------ | ------------------------------------------------------- | ---------- | --- |
+| GET    | `/documents`                                            | paginación/filtros | Lista fuentes accesibles. |
+| GET    | `/documents/{document_id}`                              | — | Obtiene metadatos de fuente. |
+| GET    | `/document-chunks`                                      | paginación/filtros | Lista fragmentos accesibles; uso diagnóstico. |
+| GET    | `/document-chunks/{chunk_id}`                           | — | Obtiene un fragmento; uso diagnóstico. |
+| POST   | `/notebooks/{notebook_id}/documents/upload`             | multipart `file`, `description?` | Sube, procesa y vectoriza una fuente. |
+| DELETE | `/notebooks/{notebook_id}/documents/{document_id}`      | — | Elimina fuente, chunks y archivo. |
+| POST   | `/notebooks/{notebook_id}/conversations`                | `name?` | Crea conversación privada. |
+| GET    | `/notebooks/{notebook_id}/conversations`                | paginación | Lista conversaciones del actor. |
+| GET    | `/conversations/{conversation_id}/messages`             | paginación | Recupera historial. |
+| POST   | `/conversations/{conversation_id}/messages`             | `content`, `model?` | Pregunta al RAG y devuelve fuentes. |
+
+### Flashcards, exámenes y calificación
+
+| Método | Ruta                                                   | Body/query | Uso |
+| ------ | ------------------------------------------------------ | ---------- | --- |
+| POST   | `/notebooks/{notebook_id}/flashcards/generate`         | `count=1..20`, `model?` | Genera y persiste flashcards. |
+| GET    | `/notebooks/{notebook_id}/flashcards`                  | paginación | Material de estudio con pregunta/respuesta. |
+| GET    | `/flashcards`                                          | paginación/filtros | Lista técnica global accesible. |
+| GET    | `/flashcards/{flashcard_id}`                           | — | Obtiene flashcard. |
+| DELETE | `/flashcards/{flashcard_id}`                           | — | Elimina flashcard autorizada. |
+| POST   | `/notebooks/{notebook_id}/exams/generate`              | nombre, descripción y contadores | Genera examen con RAG. |
+| GET    | `/exams`                                               | paginación/filtros | Lista exámenes accesibles. |
+| GET    | `/exams/{exam_id}`                                     | — | Obtiene metadatos del examen. |
+| PATCH  | `/exams/{exam_id}`                                     | `name?`, `description?`, `status?` | Actualiza examen. |
+| DELETE | `/exams/{exam_id}`                                     | — | Elimina examen autorizado. |
+| POST   | `/exams/{exam_id}/attempts`                            | `{}` | Inicia o recupera intento activo. |
+| GET    | `/attempts/{attempt_id}`                               | — | Recupera sesión y respuestas. |
+| PUT    | `/attempts/{attempt_id}/answers/{question_id}`         | `selected_option_id` o `answer_text` | Crea/reemplaza respuesta. |
+| POST   | `/attempts/{attempt_id}/finish`                        | `{}` | Finaliza y califica. |
+| GET    | `/questions`                                           | paginación/filtros | Lista técnica de preguntas accesibles. |
+| GET    | `/questions/{question_id}`                             | — | Obtiene pregunta. |
+| PATCH  | `/questions/{question_id}`                             | `type?`, `statement?`, `expected_answer?` | Administración autorizada. |
+| DELETE | `/questions/{question_id}`                             | — | Elimina pregunta autorizada. |
+| GET    | `/question-options`                                    | paginación/filtros | Lista técnica de opciones accesibles. |
+| GET    | `/question-options/{option_id}`                        | — | Obtiene opción. |
+| PATCH  | `/question-options/{option_id}`                        | `option_text?`, `is_correct?`, `option_order?` | Administración autorizada. |
+| DELETE | `/question-options/{option_id}`                        | — | Elimina opción autorizada. |
+
+## Secuencias de consumo
+
+### Inicio de la aplicación
+
+1. Recupera/refresca la sesión de Supabase.
+2. Llama `GET /users/me`.
+3. En paralelo carga `GET /users/me/statistics`, `GET /notebooks` y `GET /tags`.
+4. Si cualquiera responde `401`, limpia la sesión y vuelve a autenticación.
+
+### Flujo completo de aprendizaje
+
+1. `POST /notebooks`.
+2. Opcional: `POST /notebooks/{id}/tags/{tag_id}`.
+3. `POST /notebooks/{id}/documents/upload` por cada fuente.
+4. Crea conversación y envía mensajes, o genera flashcards/examen.
+5. Para examen: inicia intento, guarda cada respuesta con `PUT` y finaliza.
+6. Actualiza dashboard con `GET /users/me/statistics`.
+
+### Flujo colaborativo
+
+1. `POST /rooms`.
+2. Obtén o crea la identidad `study-member` del invitado.
+3. `POST /rooms/{room_id}/members`.
+4. `POST /rooms/{room_id}/notebooks`.
+5. RLS y las políticas de aplicación determinan qué operaciones puede realizar cada rol.
 
 ## Contratos para las pantallas
 
