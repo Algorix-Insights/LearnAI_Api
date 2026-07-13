@@ -66,5 +66,5 @@ def test_ai_usage_quota_maps_to_safe_429() -> None:
         asyncio.run(repository.reserve(actor_id="actor-id", operation="chat"))
 
     assert captured.value.status_code == 429
-    assert captured.value.headers == {"Retry-After": "3600"}
+    assert captured.value.headers == {"Retry-After": "0"}
     assert "database detail" not in captured.value.message

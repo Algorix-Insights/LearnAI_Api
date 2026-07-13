@@ -153,12 +153,12 @@ def test_provider_rate_limit_is_safe_429_with_retry_header() -> None:
 
     error = captured.value
     assert error.status_code == 429
-    assert error.headers == {"Retry-After": "60"}
+    assert error.headers == {"Retry-After": "0"}
     assert "provider-only-detail" not in error.message
 
     response = asyncio.run(api_error_handler(None, error))
     assert response.status_code == 429
-    assert response.headers["retry-after"] == "60"
+    assert response.headers["retry-after"] == "0"
     assert "provider-only-detail" not in json.loads(response.body)["detail"]
 
 

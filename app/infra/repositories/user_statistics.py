@@ -64,13 +64,13 @@ class UserStatisticsRepository:
             raise ApiError(
                 429,
                 "Demasiadas actividades registradas. Intenta de nuevo en un minuto.",
-                headers={"Retry-After": "60"},
+                headers={"Retry-After": "0"},
             ) from exc
         if "learning_event_daily_limit" in message:
             raise ApiError(
                 429,
                 "Alcanzaste el limite diario de actividad registrable.",
-                headers={"Retry-After": "3600"},
+                headers={"Retry-After": "0"},
             ) from exc
         if "idempotency_key_reused" in message:
             raise ApiError(
