@@ -146,6 +146,27 @@ def test_preflight_detects_duplicate_active_attempts_before_unique_index() -> No
     assert "HAVING COUNT(*) > 1" in preflight
 
 
+def test_new_user_general_tag_trigger_is_idempotent_and_notebook_independent() -> None:
+    migration = _sql("20260713001400_default_general_tag.sql")
+
+    assert "CREATE OR REPLACE FUNCTION public.ensure_user_general_tag()" in migration
+    assert "SECURITY DEFINER" in migration
+    assert "SET search_path = ''" in migration
+    assert "REVOKE ALL ON FUNCTION public.ensure_user_general_tag()" in migration
+    assert "AFTER INSERT ON public.users" in migration
+    assert "EXECUTE FUNCTION public.ensure_user_general_tag()" in migration
+    assert "INSERT INTO public.tags" in migration
+    assert "'general'" in migration
+    assert "'active'" in migration
+    assert "NEW.user_id" in migration
+    assert "ON CONFLICT (created_by_user_id, (LOWER(BTRIM(name))))" in migration
+    assert "DO UPDATE SET" in migration
+    assert "FROM public.users AS app_user" in migration
+    assert "ON auth.users" not in migration
+    assert "public.notebooks" not in migration
+    assert "public.notebook_tags" not in migration
+
+
 def test_attempt_finalization_verifies_the_graded_answer_snapshot() -> None:
     migration = _sql("20260713000600_exam_attempt_workflow.sql")
 

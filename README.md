@@ -144,7 +144,7 @@ La API estará disponible en `http://127.0.0.1:8000`. Puedes acceder a la docume
 
 ### Base de datos Supabase
 
-Las migraciones versionadas viven en `supabase/migrations/`. Esta entrega contiene 13 migraciones timestamped, de `20260713000100_initial_schema.sql` a `20260713001300_user_owned_tags.sql`. Antes de aplicar cambios a un proyecto existente, ejecuta `scripts/security_preflight.sql` y revisa cualquier policy ajena a `learnia_*`.
+Las migraciones versionadas viven en `supabase/migrations/`. Esta entrega contiene 14 migraciones timestamped, de `20260713000100_initial_schema.sql` a `20260713001400_default_general_tag.sql`. Antes de aplicar cambios a un proyecto existente, ejecuta `scripts/security_preflight.sql` y revisa cualquier policy ajena a `learnia_*`.
 
 ```bash
 npx supabase db push --dry-run --db-url "$SUPABASE_SESSION_URL" --include-all
