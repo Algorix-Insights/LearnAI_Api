@@ -43,6 +43,29 @@ Las respuestas de un recurso usan `{ "data": ... }`. Los listados agregan `limit
   proveedor Supabase Auth. Un `429` emitido por Supabase todavía debe respetar `Retry-After`.
 - Un registro sin `password` solo inicia la verificación. La respuesta contiene `access_token: ""` y `user: null`; el usuario y la sesión aparecen después de completar el Magic Link/OTP.
 - El frontend puede enviar `captcha_token` en registro, login, OTP, verificación y recuperación cuando CAPTCHA esté habilitado.
+- `sign_in_with_otp` envía un Magic Link por defecto. Para mostrar un código de seis dígitos,
+  la plantilla **Magic Link** de Supabase debe incluir `{{ .Token }}`. El código se verifica con:
+
+```json
+{
+  "email": "usuario@ejemplo.com",
+  "token": "123456",
+  "type": "email"
+}
+```
+
+- Si la plantilla usa un enlace con `token_hash={{ .TokenHash }}`, el frontend debe extraer
+  `token_hash` de la URL y verificarlo con:
+
+```json
+{
+  "token_hash": "valor-recibido-en-la-url",
+  "type": "email"
+}
+```
+
+- `token` y `token_hash` son mutuamente excluyentes. Cada reto es de un solo uso; al solicitar
+  uno nuevo se debe descartar el anterior.
 
 ## Errores y reintentos
 

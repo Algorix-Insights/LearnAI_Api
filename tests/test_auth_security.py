@@ -9,7 +9,7 @@ from supabase_auth.errors import AuthApiError
 
 from app.api import dependencies as api_dependencies
 from app.api.auth_rate_limit import InMemoryRateLimiter, RateLimitBucket
-from app.core.exceptions import AuthRateLimitError
+from app.core.exceptions import AuthRateLimitError, UnauthorizedError
 from app.domain.schemas.resources.auth import (
     AuthForgotPasswordRequest,
     AuthOtpRequest,
@@ -35,13 +35,38 @@ class RateLimitedAuth:
         )
 
 
+class ExpiredOtpAuth:
+    def verify_otp(self, _: dict) -> None:
+        raise AuthApiError(
+            "Token has expired or is invalid",
+            403,
+            "otp_expired",
+        )
+
+
 class CapturingAuth:
     def __init__(self) -> None:
         self.otp_payload: dict | None = None
+        self.verify_payload: dict | None = None
         self.recovery_call: tuple[str, dict | None] | None = None
 
     def sign_in_with_otp(self, payload: dict) -> None:
         self.otp_payload = payload
+
+    def verify_otp(self, payload: dict) -> SimpleNamespace:
+        self.verify_payload = payload
+        user = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000001",
+            email="user@example.test",
+            user_metadata={},
+        )
+        session = SimpleNamespace(
+            access_token="access-token",
+            refresh_token="refresh-token",
+            token_type="bearer",
+            expires_in=3600,
+        )
+        return SimpleNamespace(user=user, session=session)
 
     def reset_password_for_email(self, email: str, options: dict | None = None) -> None:
         self.recovery_call = (email, options)
@@ -67,6 +92,56 @@ def test_email_otp_uses_current_type_and_password_minimum() -> None:
         )
 
 
+def test_verify_otp_accepts_code_or_token_hash_but_not_both() -> None:
+    code_request = AuthVerifyOtpRequest(
+        email="  user@example.test  ",
+        token="  123456  ",
+    )
+    assert code_request.email == "user@example.test"
+    assert code_request.token == "123456"
+
+    hash_request = AuthVerifyOtpRequest(token_hash="  token-hash-value  ")
+    assert hash_request.email is None
+    assert hash_request.token_hash == "token-hash-value"
+
+    with pytest.raises(ValidationError):
+        AuthVerifyOtpRequest(token="123456")
+
+    with pytest.raises(ValidationError):
+        AuthVerifyOtpRequest(
+            email="user@example.test",
+            token="123456",
+            token_hash="token-hash-value",
+        )
+
+
+def test_verify_otp_forwards_code_and_token_hash_with_the_correct_shape() -> None:
+    auth = CapturingAuth()
+    repository = SupabaseAuthRepository(client=StubClient(auth))
+
+    asyncio.run(
+        repository.verify_otp(
+            AuthVerifyOtpRequest(
+                email="user@example.test",
+                token="123456",
+                captcha_token="captcha-proof",
+            )
+        )
+    )
+    assert auth.verify_payload == {
+        "email": "user@example.test",
+        "token": "123456",
+        "type": "email",
+        "options": {"captcha_token": "captcha-proof"},
+    }
+
+    asyncio.run(repository.verify_otp(AuthVerifyOtpRequest(token_hash="token-hash-value")))
+    assert auth.verify_payload == {
+        "token_hash": "token-hash-value",
+        "type": "email",
+    }
+
+
 def test_provider_rate_limit_is_safe_429_with_retry_header() -> None:
     repository = SupabaseAuthRepository(
         client=StubClient(RateLimitedAuth()),
@@ -85,6 +160,20 @@ def test_provider_rate_limit_is_safe_429_with_retry_header() -> None:
     assert response.status_code == 429
     assert response.headers["retry-after"] == "60"
     assert "provider-only-detail" not in json.loads(response.body)["detail"]
+
+
+def test_expired_otp_error_tells_client_to_request_a_new_challenge() -> None:
+    repository = SupabaseAuthRepository(client=StubClient(ExpiredOtpAuth()))
+
+    with pytest.raises(UnauthorizedError) as captured:
+        asyncio.run(
+            repository.verify_otp(
+                AuthVerifyOtpRequest(email="user@example.test", token="123456")
+            )
+        )
+
+    assert captured.value.status_code == 401
+    assert "Solicita uno nuevo" in captured.value.message
 
 
 def test_auth_client_configuration_failure_is_safe_503(monkeypatch) -> None:

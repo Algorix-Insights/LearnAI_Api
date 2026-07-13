@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.schemas.resources.users import UserRead
 
@@ -34,10 +34,24 @@ class AuthOtpRequest(BaseModel):
 class AuthVerifyOtpRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str = Field(min_length=3, max_length=320)
-    token: str = Field(min_length=6, max_length=2048)
+    email: str | None = Field(default=None, min_length=3, max_length=320)
+    token: str | None = Field(default=None, min_length=6, max_length=2048)
+    token_hash: str | None = Field(default=None, min_length=6, max_length=4096)
     type: Literal["email", "recovery", "invite", "email_change"] = "email"
     captcha_token: str | None = Field(default=None, min_length=1, max_length=4096)
+
+    @field_validator("email", "token", "token_hash", mode="before")
+    @classmethod
+    def strip_verification_values(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def validate_verification_challenge(self) -> "AuthVerifyOtpRequest":
+        if (self.token is None) == (self.token_hash is None):
+            raise ValueError("Debe enviar exactamente uno de token o token_hash.")
+        if self.token is not None and self.email is None:
+            raise ValueError("El email es obligatorio al verificar un código OTP.")
+        return self
 
 
 class AuthForgotPasswordRequest(BaseModel):
