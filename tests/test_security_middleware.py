@@ -36,3 +36,61 @@ def test_oversized_request_is_rejected_before_route_parsing() -> None:
 
     assert response.status_code == 413
     assert response.json()["detail"].startswith("El cuerpo")
+
+
+def test_cors_preflight_allows_local_frontend_to_register() -> None:
+    client = TestClient(create_app(Settings()))
+
+    response = client.options(
+        "/api/v1/auth/register",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "POST" in response.headers["access-control-allow-methods"]
+
+
+def test_cors_headers_are_present_on_auth_route_errors() -> None:
+    client = TestClient(create_app(Settings()))
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={},
+        headers={"Origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 422
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert response.headers["access-control-expose-headers"] == "X-Request-ID"
+
+
+def test_cors_does_not_allow_an_unknown_origin() -> None:
+    client = TestClient(create_app(Settings()))
+
+    response = client.options(
+        "/api/v1/auth/register",
+        headers={
+            "Origin": "https://malicious.example",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_origins_are_normalized_and_deduplicated() -> None:
+    settings = Settings(
+        cors_allowed_origins=("http://localhost:3000/, http://127.0.0.1:3000,http://localhost:3000")
+    )
+
+    assert settings.cors_origins == [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
