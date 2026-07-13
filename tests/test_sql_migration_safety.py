@@ -63,6 +63,18 @@ def test_atomic_generation_rejects_null_collections() -> None:
     assert "OR p_questions IS NULL" in migration
 
 
+def test_flashcard_listing_never_exposes_exam_answer_keys() -> None:
+    migration = _sql("20260713001000_atomic_rag_generation.sql")
+    listing = migration[
+        migration.index("CREATE OR REPLACE FUNCTION public.list_notebook_flashcards(") :
+        migration.index("CREATE OR REPLACE FUNCTION public.append_conversation_message(")
+    ]
+
+    assert "AND NOT EXISTS (" in listing
+    assert "FROM public.exam_questions eq" in listing
+    assert "WHERE eq.question_id = f.question_id" in listing
+
+
 def test_authenticated_grants_hide_internal_document_fields() -> None:
     migration = _sql("20260713000500_security_rls.sql")
 
@@ -122,6 +134,16 @@ def test_attempt_start_is_atomic_limited_and_recoverable() -> None:
     assert "RETURN NEXT v_existing" in migration
     assert "attempt_limit_reached" in migration
     assert "TO service_role" in migration
+
+
+def test_preflight_detects_duplicate_active_attempts_before_unique_index() -> None:
+    preflight = (
+        Path(__file__).parents[1] / "scripts" / "security_preflight.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "WHERE attempt.status = 'in_progress'" in preflight
+    assert "GROUP BY attempt.exam_id, attempt.user_id" in preflight
+    assert "HAVING COUNT(*) > 1" in preflight
 
 
 def test_attempt_finalization_verifies_the_graded_answer_snapshot() -> None:

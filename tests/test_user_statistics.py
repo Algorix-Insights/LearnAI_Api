@@ -122,8 +122,12 @@ def test_statistics_builds_dashboard_from_user_scoped_data() -> None:
     # shared flag must not mark every room member as having mastered it.
     assert response.data.overview.notebooks_dominated == 0
     assert response.data.overview.total_study_seconds == 900
-    assert response.data.reinforcement[0].name == "Algoritmos"
-    assert response.data.reinforcement[0].flashcards_count == 1
+    reinforcement = {
+        item.notebook_id: item for item in response.data.reinforcement
+    }
+    assert reinforcement[NOTEBOOK_ID].name == "Algoritmos"
+    assert reinforcement[NOTEBOOK_ID].flashcards_count == 1
+    assert reinforcement[SECOND_NOTEBOOK_ID].mastery_percent == 0
     assert response.data.upcoming[0].notebook_id == NOTEBOOK_ID
     assert response.data.streak.current_days == 1
     assert response.data.time_by_notebook[0].study_seconds == 900

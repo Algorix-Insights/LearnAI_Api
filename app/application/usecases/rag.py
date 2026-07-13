@@ -176,6 +176,10 @@ class RagUseCase:
         if len(filename) > 255:
             raise BadRequestError("El nombre del archivo supera el limite de 255 caracteres.")
         storage_path = self.document_processor.storage_path(notebook_id, filename, suffix)
+        # Reserve before CPU-heavy PDF parsing/chunking as well as before the
+        # provider call, so malformed-but-authenticated uploads cannot bypass
+        # the durable ingestion ceiling and exhaust the worker pool.
+        await self._reserve_ai_usage(user_id, "document_embedding")
         text = await asyncio.to_thread(
             self.document_processor.extract_text,
             content,
@@ -186,7 +190,6 @@ class RagUseCase:
         chunks = await asyncio.to_thread(self.document_processor.chunk_text, text)
         if len(chunks) > MAX_DOCUMENT_CHUNKS:
             raise BadRequestError("El documento genera demasiados fragmentos para procesarlo.")
-        await self._reserve_ai_usage(user_id, "document_embedding")
         await self.storage.upload(
             bucket=self.settings.documents_bucket,
             path=storage_path,

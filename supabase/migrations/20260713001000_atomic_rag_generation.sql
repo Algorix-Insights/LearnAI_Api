@@ -173,6 +173,11 @@ BEGIN
         FROM public.flashcards f
         JOIN public.questions q ON q.question_id = f.question_id
         WHERE f.notebook_id = p_notebook_id
+          AND NOT EXISTS (
+              SELECT 1
+              FROM public.exam_questions eq
+              WHERE eq.question_id = f.question_id
+          )
         ORDER BY f.created_at DESC
         LIMIT p_limit
         OFFSET p_offset

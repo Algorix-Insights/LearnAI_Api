@@ -278,9 +278,29 @@ class FakeGeneration:
         ][offset : offset + limit]
 
 
+class FakeUsage:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def reserve(
+        self, *, actor_id: str, operation: str, units: int = 1
+    ) -> None:
+        self.calls.append(
+            {"actor_id": actor_id, "operation": operation, "units": units}
+        )
+
+
+class ExplodingDocumentProcessor(RagDocumentProcessor):
+    def extract_text(self, content: bytes, suffix: str) -> str:
+        del content, suffix
+        raise BadRequestError("documento malformado")
+
+
 def make_use_case(
     llm: FakeLlm | None = None,
     generation=None,
+    usage=None,
+    document_processor: RagDocumentProcessor | None = None,
 ) -> tuple[RagUseCase, FakeStorage, FakeChunks, FakeConversations]:
     storage = FakeStorage()
     chunks = FakeChunks()
@@ -300,6 +320,8 @@ def make_use_case(
         llm=llm or FakeLlm(),
         settings=Settings(openrouter_api_key="test-key"),
         generation=generation,
+        usage=usage,
+        document_processor=document_processor,
     )
     return use_case, storage, chunks, conversations
 
@@ -394,6 +416,32 @@ def test_rag_rejects_oversized_document_before_reading() -> None:
             )
         )
 
+    assert storage.uploads == []
+
+
+def test_rag_reserves_durable_ingestion_quota_before_cpu_heavy_parsing() -> None:
+    usage = FakeUsage()
+    use_case, storage, _, _ = make_use_case(
+        usage=usage,
+        document_processor=ExplodingDocumentProcessor(),
+    )
+
+    with pytest.raises(BadRequestError, match="malformado"):
+        run_async(
+            use_case.upload_document(
+                notebook_id=NOTEBOOK_ID,
+                user_id=USER_ID,
+                file=upload_file("notas.txt", b"contenido", "text/plain"),
+            )
+        )
+
+    assert usage.calls == [
+        {
+            "actor_id": str(USER_ID),
+            "operation": "document_embedding",
+            "units": 1,
+        }
+    ]
     assert storage.uploads == []
 
 

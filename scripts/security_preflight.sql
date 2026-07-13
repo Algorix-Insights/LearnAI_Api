@@ -110,3 +110,16 @@ ORDER BY
 
 -- Migration filenames are timestamped and unique. Compare the local list with
 -- the target history before every push; never repair versions by guesswork.
+
+-- Migration 006 creates a unique partial index for active attempts. Any row
+-- returned here must be reconciled in staging before the push, otherwise that
+-- migration will stop without applying its transaction.
+SELECT
+    attempt.exam_id,
+    attempt.user_id,
+    COUNT(*) AS active_attempts
+FROM public.attempts AS attempt
+WHERE attempt.status = 'in_progress'
+GROUP BY attempt.exam_id, attempt.user_id
+HAVING COUNT(*) > 1
+ORDER BY active_attempts DESC, attempt.exam_id, attempt.user_id;
