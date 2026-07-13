@@ -19,9 +19,7 @@ async def api_error_handler(_: object, exc: ApiError) -> JSONResponse:
     )
 
 
-async def request_validation_error_handler(
-    _: object, exc: RequestValidationError
-) -> JSONResponse:
+async def request_validation_error_handler(_: object, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=422,
         content={
@@ -54,11 +52,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=app_settings.app_name,
         version=app_settings.app_version,
     )
-    
+
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(ValidationError, validation_error_handler)
-    
+
     app.add_middleware(ApiQueryMiddleware, api_prefix=app_settings.api_v1_prefix)
     app.add_middleware(
         SecurityMiddleware,
@@ -66,18 +64,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         environment=app_settings.environment,
         max_request_body_bytes=app_settings.max_request_body_bytes,
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=app_settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
+    )
     app.include_router(health_router)
     app.include_router(api_router, prefix=app_settings.api_v1_prefix)
 
-
-    # app.add_middleware(
-    #     CORSMiddleware,
-    #     allow_origins=["*"],  
-    #     allow_credentials=False,
-    #     allow_methods=["*"],
-    #     allow_headers=["*"],
-    # )
-    
     return app
 
 
