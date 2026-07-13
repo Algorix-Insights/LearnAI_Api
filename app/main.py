@@ -11,7 +11,11 @@ from app.core.middlewares import ApiQueryMiddleware
 
 
 async def api_error_handler(_: object, exc: ApiError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message},
+        headers=exc.headers,
+    )
 
 
 async def request_validation_error_handler(

@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 from uuid import UUID
 
 from fastapi import UploadFile
+import pytest
+from pydantic import ValidationError
 
 from app.application.usecases.rag import RagUseCase
 from app.core.config import Settings
-from app.domain.schemas.resources.rag import ChatRequest
+from app.core.exceptions import BadRequestError
+from app.domain.schemas.resources.rag import (
+    ChatRequest,
+    ExamGenerationRequest,
+    FlashcardGenerationRequest,
+)
 from app.domain.services.rag import RagDocumentProcessor
 
 
@@ -126,6 +134,72 @@ class FakeUsers:
     pass
 
 
+class FakeQuestions:
+    def __init__(self) -> None:
+        self.items: list[dict[str, Any]] = []
+
+    async def create(self, request) -> dict[str, Any]:
+        payload = request.payload.model_dump(mode="json")
+        item = {
+            "question_id": f"10000000-0000-0000-0000-{len(self.items) + 1:012d}",
+            **payload,
+        }
+        self.items.append(item)
+        return item
+
+
+class FakeFlashcards:
+    def __init__(self) -> None:
+        self.items: list[dict[str, Any]] = []
+
+    async def create(self, request) -> dict[str, Any]:
+        payload = request.payload.model_dump(mode="json")
+        item = {
+            "flashcard_id": f"20000000-0000-0000-0000-{len(self.items) + 1:012d}",
+            **payload,
+        }
+        self.items.append(item)
+        return item
+
+
+class FakeExams:
+    def __init__(self) -> None:
+        self.items: list[dict[str, Any]] = []
+
+    async def create(self, request) -> dict[str, Any]:
+        payload = request.payload.model_dump(mode="json")
+        item = {
+            "exam_id": "30000000-0000-0000-0000-000000000001",
+            **payload,
+        }
+        self.items.append(item)
+        return item
+
+
+class FakeExamQuestions:
+    def __init__(self) -> None:
+        self.items: list[dict[str, Any]] = []
+
+    async def create(self, request) -> dict[str, Any]:
+        item = request.model_dump(mode="json")
+        self.items.append(item)
+        return item
+
+
+class FakeQuestionOptions:
+    def __init__(self) -> None:
+        self.items: list[dict[str, Any]] = []
+
+    async def create(self, request) -> dict[str, Any]:
+        payload = request.payload.model_dump(mode="json")
+        item = {
+            "option_id": f"40000000-0000-0000-0000-{len(self.items) + 1:012d}",
+            **payload,
+        }
+        self.items.append(item)
+        return item
+
+
 class FakeStorage:
     def __init__(self) -> None:
         self.uploads: list[dict[str, Any]] = []
@@ -152,15 +226,27 @@ class FakeStorage:
 
 
 class FakeLlm:
+    def __init__(self, structured_responses: list[dict[str, Any] | str] | None = None) -> None:
+        self.structured_responses = list(structured_responses or [])
+        self.chat_payloads: list[dict[str, Any]] = []
+
     async def embeddings(self, *, model: str, input, **params) -> dict:
         items = input if isinstance(input, list) else [input]
         return {"data": [{"embedding": [0.1] * 1536} for _ in items]}
 
     async def chat_completion(self, *, messages, model=None, stream=False, **params) -> dict:
+        self.chat_payloads.append({"messages": messages, "model": model, **params})
+        if "response_format" in params:
+            content = self.structured_responses.pop(0)
+            if not isinstance(content, str):
+                content = json.dumps(content)
+            return {"choices": [{"message": {"content": content}}]}
         return {"choices": [{"message": {"content": "La fotosintesis usa luz. [1]"}}]}
 
 
-def make_use_case() -> tuple[RagUseCase, FakeStorage, FakeChunks, FakeConversations]:
+def make_use_case(
+    llm: FakeLlm | None = None,
+) -> tuple[RagUseCase, FakeStorage, FakeChunks, FakeConversations]:
     storage = FakeStorage()
     chunks = FakeChunks()
     conversations = FakeConversations()
@@ -168,11 +254,16 @@ def make_use_case() -> tuple[RagUseCase, FakeStorage, FakeChunks, FakeConversati
         documents=FakeDocuments(),
         chunks=chunks,
         conversations=conversations,
+        exams=FakeExams(),
+        exam_questions=FakeExamQuestions(),
+        questions=FakeQuestions(),
+        question_options=FakeQuestionOptions(),
+        flashcards=FakeFlashcards(),
         search=FakeSearch(),
         access=FakeAccess(),
         users=FakeUsers(),
         storage=storage,
-        llm=FakeLlm(),
+        llm=llm or FakeLlm(),
         settings=Settings(openrouter_api_key="test-key"),
     )
     return use_case, storage, chunks, conversations
@@ -208,7 +299,8 @@ def test_rag_chat_uses_retrieved_sources_and_stores_messages() -> None:
     response = run_async(
         use_case.chat(
             conversation_id=CONVERSATION_ID,
-            request=ChatRequest(user_id=USER_ID, content="Que usa la fotosintesis?"),
+            user_id=USER_ID,
+            request=ChatRequest(content="Que usa la fotosintesis?"),
         )
     )
 
@@ -229,3 +321,148 @@ def test_rag_processor_rejects_unsupported_documents() -> None:
         assert "Solo se permiten" in str(exc)
     else:
         raise AssertionError("unsupported file accepted")
+
+
+def test_rag_request_schemas_reject_client_supplied_user_id() -> None:
+    with pytest.raises(ValidationError):
+        ChatRequest.model_validate(
+            {"user_id": str(USER_ID), "content": "contenido del usuario"}
+        )
+
+
+def test_rag_rejects_oversized_document_before_reading() -> None:
+    use_case, storage, _, _ = make_use_case()
+    file = upload_file("grande.txt", b"contenido", "text/plain")
+    file.size = 10 * 1024 * 1024 + 1
+
+    with pytest.raises(BadRequestError, match="10 MB"):
+        run_async(
+            use_case.upload_document(
+                notebook_id=NOTEBOOK_ID,
+                user_id=USER_ID,
+                file=file,
+            )
+        )
+
+    assert storage.uploads == []
+
+
+def test_rag_rejects_unconfigured_chat_model_before_storing_message() -> None:
+    use_case, _, _, conversations = make_use_case()
+
+    with pytest.raises(BadRequestError, match="no esta permitido"):
+        run_async(
+            use_case.chat(
+                conversation_id=CONVERSATION_ID,
+                user_id=USER_ID,
+                request=ChatRequest(
+                    content="Que usa la fotosintesis?",
+                    model="vendor/modelo-no-permitido",
+                ),
+            )
+        )
+
+    assert conversations.messages == []
+
+
+def test_rag_generates_and_persists_flashcards_from_notebook_sources() -> None:
+    llm = FakeLlm(
+        [
+            {
+                "flashcards": [
+                    {"question": "¿Que usa la fotosintesis?", "answer": "Luz."},
+                    {"question": "¿Que producen las plantas?", "answer": "Energia quimica."},
+                ]
+            }
+        ]
+    )
+    use_case, _, _, _ = make_use_case(llm)
+
+    response = run_async(
+        use_case.generate_flashcards(
+            notebook_id=NOTEBOOK_ID,
+            user_id=USER_ID,
+            request=FlashcardGenerationRequest(count=2),
+        )
+    )
+
+    assert len(response.data) == 2
+    assert len(use_case.questions.items) == 2
+    assert len(use_case.flashcards.items) == 2
+    assert all(item["type"] == "open" for item in use_case.questions.items)
+    response_format = llm.chat_payloads[0]["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["strict"] is True
+
+
+def test_rag_generates_exam_with_all_question_types_and_persists_relations() -> None:
+    llm = FakeLlm(
+        [
+            {
+                "title": "Examen de fotosintesis",
+                "description": "Evaluacion basada en las notas.",
+                "questions": [
+                    {
+                        "type": "true_false",
+                        "statement": "La fotosintesis usa luz.",
+                        "correct_answer": True,
+                    },
+                    {
+                        "type": "multiple_choice",
+                        "statement": "¿Que fuente usa la fotosintesis?",
+                        "options": ["Luz", "Sonido", "Gravedad"],
+                        "correct_option_index": 0,
+                    },
+                    {
+                        "type": "open",
+                        "statement": "Explica el papel de la luz.",
+                        "expected_answer": "Aporta energia al proceso.",
+                    },
+                ],
+            }
+        ]
+    )
+    use_case, _, _, _ = make_use_case(llm)
+
+    response = run_async(
+        use_case.generate_exam(
+            notebook_id=NOTEBOOK_ID,
+            user_id=USER_ID,
+            request=ExamGenerationRequest(
+                true_false_count=1,
+                multiple_choice_count=1,
+                open_count=1,
+            ),
+        )
+    )
+
+    assert response.data.name == "Examen de fotosintesis"
+    assert len(response.data.questions) == 3
+    assert len(use_case.exams.items) == 1
+    assert len(use_case.exam_questions.items) == 3
+    assert len(use_case.questions.items) == 3
+    assert len(use_case.question_options.items) == 5
+    assert sum(item["is_correct"] for item in use_case.question_options.items) == 2
+    assert all(not hasattr(item, "expected_answer") for item in response.data.questions)
+    assert all(
+        not hasattr(option, "is_correct")
+        for question in response.data.questions
+        for option in question.options
+    )
+
+
+def test_rag_rejects_invalid_structured_output_before_persisting() -> None:
+    llm = FakeLlm(["esto no es json"])
+    use_case, _, _, _ = make_use_case(llm)
+
+    with pytest.raises(BadRequestError, match="JSON estructurado invalido"):
+        run_async(
+            use_case.generate_flashcards(
+                notebook_id=NOTEBOOK_ID,
+                user_id=USER_ID,
+                request=FlashcardGenerationRequest(count=2),
+            )
+        )
+
+    assert use_case.questions.items == []
+    assert use_case.flashcards.items == []

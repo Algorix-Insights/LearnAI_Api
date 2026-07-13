@@ -14,8 +14,9 @@ from app.api.v1.resources.tags import router as tags_router
 from app.api.v1.resources.user_answers import router as user_answers_router
 from app.api.v1.resources.users import router as users_router
 
-RESOURCE_ROUTERS = [
-    auth_router,
+PUBLIC_RESOURCE_ROUTERS = (auth_router,)
+
+PROTECTED_RESOURCE_ROUTERS = (
     users_router,
     notebooks_router,
     rooms_router,
@@ -30,4 +31,7 @@ RESOURCE_ROUTERS = [
     document_chunks_router,
     tags_router,
     rag_router,
-]
+)
+
+# Compatibility export for code that only needs to enumerate every resource.
+RESOURCE_ROUTERS = [*PUBLIC_RESOURCE_ROUTERS, *PROTECTED_RESOURCE_ROUTERS]

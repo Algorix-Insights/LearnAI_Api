@@ -2,9 +2,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.dependencies import get_exam_questions_use_case, get_exams_use_case
+from app.api.dependencies import (
+    get_current_user,
+    get_exam_attempt_workflow_use_case,
+    get_exam_questions_use_case,
+    get_exams_use_case,
+)
 from app.application.usecases import ExamQuestionUseCase, ExamUseCase
+from app.application.usecases.exam_attempts import ExamAttemptWorkflowUseCase
+from app.core.exceptions import UnauthorizedError
 from app.domain.schemas.entities import ExamCreate, ExamUpdate
+from app.domain.schemas.resources.attempts import AttemptSessionResponse, StartAttemptRequest
 from app.domain.schemas.resources.exams import (
     AddExamQuestionRequest,
     ExamCreateRequest,
@@ -17,6 +25,7 @@ from app.domain.schemas.resources.exams import (
     ExamResponse,
     ExamUpdateRequest,
 )
+from app.domain.schemas.resources.users import UserRead
 
 router = APIRouter(prefix="/exams", tags=["exams"])
 
@@ -43,6 +52,25 @@ async def get_exam(
     use_case: Annotated[ExamUseCase, Depends(get_exams_use_case)],
 ) -> ExamResponse:
     return await use_case.get(path)
+
+
+@router.post(
+    "/{exam_id}/attempts",
+    response_model=AttemptSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["exam-attempts"],
+)
+async def start_exam_attempt(
+    path: Annotated[ExamPath, Depends()],
+    _payload: StartAttemptRequest,
+    current_user: Annotated[UserRead, Depends(get_current_user)],
+    use_case: Annotated[
+        ExamAttemptWorkflowUseCase, Depends(get_exam_attempt_workflow_use_case)
+    ],
+) -> AttemptSessionResponse:
+    if current_user.user_id is None:
+        raise UnauthorizedError()
+    return await use_case.start(exam_id=path.exam_id, user_id=current_user.user_id)
 
 
 @router.patch("/{exam_id}", response_model=ExamResponse)

@@ -1,4 +1,4 @@
-from app.domain.interfaces.attempts import AttemptRepository
+from app.domain.interfaces.attempts import AttemptRepository, ExamAttemptWorkflowRepository
 from app.domain.interfaces.auth import AuthRepository
 from app.domain.interfaces.document_chunks import DocumentChunkRepository
 from app.domain.interfaces.documents import DocumentRepository
@@ -12,9 +12,11 @@ from app.domain.interfaces.study_members import StudyMemberRepository
 from app.domain.interfaces.tags import TagRepository
 from app.domain.interfaces.user_answers import UserAnswerRepository
 from app.domain.interfaces.users import PersonalNotebookRepository, UserRepository
+from app.domain.interfaces.user_statistics import UserStatisticsRepository
 
 __all__ = [
     "AttemptRepository",
+    "ExamAttemptWorkflowRepository",
     "AuthRepository",
     "DocumentChunkRepository",
     "DocumentRepository",
@@ -33,4 +35,5 @@ __all__ = [
     "TagRepository",
     "UserAnswerRepository",
     "UserRepository",
+    "UserStatisticsRepository",
 ]

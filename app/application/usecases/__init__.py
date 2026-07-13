@@ -18,6 +18,9 @@ from app.application.usecases.study_members import StudyMemberUseCase
 from app.application.usecases.tags import TagUseCase
 from app.application.usecases.user_answers import UserAnswerUseCase
 from app.application.usecases.users import UserUseCase
+from app.application.usecases.exam_attempts import ExamAttemptWorkflowUseCase
+from app.application.usecases.user_profile import UserProfileUseCase
+from app.application.usecases.user_statistics import UserStatisticsUseCase
 
 __all__ = [
     "AttemptUseCase",
@@ -40,4 +43,7 @@ __all__ = [
     "TagUseCase",
     "UserAnswerUseCase",
     "UserUseCase",
+    "ExamAttemptWorkflowUseCase",
+    "UserProfileUseCase",
+    "UserStatisticsUseCase",
 ]

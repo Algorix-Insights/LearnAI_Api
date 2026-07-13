@@ -4,12 +4,12 @@ from supabase import Client
 
 from app.core.exceptions import RepositoryError
 from app.core.query import ApiFilter, get_api_query_params
-from app.infra.db.supabase import get_supabase_client
+from app.infra.db.supabase import get_supabase_admin_client
 
 
 class BaseSupabaseRepository:
     def __init__(self, client: Client | None = None) -> None:
-        self.client = client or get_supabase_client()
+        self.client = client or get_supabase_admin_client()
 
     async def _list(self, table_name: str, limit: int, offset: int) -> list[dict[str, Any]]:
         try:

@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     api_v1_prefix: str = "/api/v1"
     supabase_url: str | None = None
+    supabase_publishable_key: str | None = None
     supabase_secret_key: str | None = None
+    auth_recovery_redirect_url: str | None = None
     openrouter_api_key: str | None = None
     openrouter_http_referer: str | None = None
     openrouter_app_title: str = "LearnIA API"

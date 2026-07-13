@@ -3,6 +3,7 @@ from contextlib import AbstractContextManager
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from app.infra.clients import OpenRouterClient, OpenRouterClientError
 
@@ -56,6 +57,31 @@ class FakeEventStream(AbstractContextManager["FakeEventStream"]):
 
     def __iter__(self):
         return iter([{"delta": "a"}, {"delta": "b"}])
+
+
+class FakeMessageModel(BaseModel):
+    content: str
+
+
+class FakeChoiceModel(BaseModel):
+    message: FakeMessageModel
+
+
+class FakeChatResponseModel(BaseModel):
+    choices: list[FakeChoiceModel]
+
+
+class FakePydanticChat:
+    def send(self, **kwargs: Any) -> FakeChatResponseModel:
+        return FakeChatResponseModel(
+            choices=[FakeChoiceModel(message=FakeMessageModel(content="respuesta"))]
+        )
+
+
+class FakePydanticOpenRouter(FakeOpenRouter):
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.chat = FakePydanticChat()
 
 
 def test_open_router_client_sends_chat_with_sdk() -> None:
@@ -131,3 +157,13 @@ def test_open_router_client_requires_api_key() -> None:
 
     with pytest.raises(OpenRouterClientError, match="OPENROUTER_API_KEY"):
         run_async(client.embedding_models())
+
+
+def test_open_router_client_serializes_pydantic_sdk_response() -> None:
+    client = OpenRouterClient("test-key", sdk_factory=FakePydanticOpenRouter)
+
+    response = run_async(
+        client.chat_completion(messages=[{"role": "user", "content": "Hola"}])
+    )
+
+    assert response == {"choices": [{"message": {"content": "respuesta"}}]}

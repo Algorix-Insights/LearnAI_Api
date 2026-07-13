@@ -1,9 +1,22 @@
-from typing import Any
+from typing import Any, NoReturn
 
 from supabase import Client
+from supabase_auth.errors import (
+    AuthApiError,
+    AuthError as SupabaseAuthException,
+    AuthRetryableError,
+)
 from supabase_auth.helpers import parse_user_response
 
-from app.core.exceptions import AuthError, InvalidCredentialsError, RepositoryError, UnauthorizedError
+from app.core.config import get_settings
+from app.core.exceptions import (
+    ApiError,
+    AuthError,
+    AuthRateLimitError,
+    AuthUnavailableError,
+    InvalidCredentialsError,
+    UnauthorizedError,
+)
 from app.domain.interfaces.auth import AuthRepository
 from app.domain.schemas.resources.auth import (
     AuthForgotPasswordRequest,
@@ -13,12 +26,21 @@ from app.domain.schemas.resources.auth import (
     AuthUpdatePasswordRequest,
     AuthVerifyOtpRequest,
 )
-from app.infra.db.supabase import get_supabase_client
+from app.infra.db.supabase import get_supabase_auth_client
 
 
 class SupabaseAuthRepository(AuthRepository):
-    def __init__(self, client: Client | None = None) -> None:
-        self.client = client or get_supabase_client()
+    def __init__(
+        self,
+        client: Client | None = None,
+        recovery_redirect_url: str | None = None,
+    ) -> None:
+        self.client = client or get_supabase_auth_client()
+        self.recovery_redirect_url = (
+            recovery_redirect_url
+            if recovery_redirect_url is not None
+            else get_settings().auth_recovery_redirect_url
+        )
 
     async def sign_up(self, request: AuthRegisterRequest) -> dict:
         try:
@@ -28,6 +50,7 @@ class SupabaseAuthRepository(AuthRepository):
                         "email": request.email,
                         "options": {
                             "should_create_user": True,
+                            "captcha_token": request.captcha_token,
                             "data": {
                                 "name": request.name,
                                 "last_name": request.last_name,
@@ -56,6 +79,7 @@ class SupabaseAuthRepository(AuthRepository):
                     "email": request.email,
                     "password": request.password,
                     "options": {
+                        "captcha_token": request.captcha_token,
                         "data": {
                             "name": request.name,
                             "last_name": request.last_name,
@@ -64,11 +88,12 @@ class SupabaseAuthRepository(AuthRepository):
                 }
             )
             return self._format_auth_response(response)
+        except ApiError:
+            raise
+        except SupabaseAuthException as exc:
+            self._raise_provider_error(exc, operation="register")
         except Exception as exc:
-            msg = str(exc)
-            if "already registered" in msg.lower() or "unique" in msg.lower():
-                raise AuthError("El correo electrónico ya está registrado.") from exc
-            raise AuthError(f"Error en registro: {msg}") from exc
+            raise AuthUnavailableError() from exc
 
     async def sign_in_with_password(self, request: AuthLoginRequest) -> dict:
         try:
@@ -76,14 +101,18 @@ class SupabaseAuthRepository(AuthRepository):
                 {
                     "email": request.email,
                     "password": request.password,
+                    "options": {
+                        "captcha_token": request.captcha_token,
+                    },
                 }
             )
             return self._format_auth_response(response)
+        except ApiError:
+            raise
+        except SupabaseAuthException as exc:
+            self._raise_provider_error(exc, operation="login")
         except Exception as exc:
-            msg = str(exc)
-            if "invalid login credentials" in msg.lower() or "invalid" in msg.lower() or "incorrect" in msg.lower():
-                raise InvalidCredentialsError() from exc
-            raise AuthError(f"Error al iniciar sesión: {msg}") from exc
+            raise AuthUnavailableError() from exc
 
     async def sign_in_with_otp(self, request: AuthOtpRequest) -> dict:
         try:
@@ -92,12 +121,17 @@ class SupabaseAuthRepository(AuthRepository):
                     "email": request.email,
                     "options": {
                         "should_create_user": request.should_create_user,
+                        "captcha_token": request.captcha_token,
                     },
                 }
             )
             return {"message": "Código OTP / enlace enviado al correo exitosamente."}
+        except ApiError:
+            raise
+        except SupabaseAuthException as exc:
+            self._raise_provider_error(exc, operation="send-otp")
         except Exception as exc:
-            raise AuthError(f"Error al enviar OTP: {str(exc)}") from exc
+            raise AuthUnavailableError() from exc
 
     async def verify_otp(self, request: AuthVerifyOtpRequest) -> dict:
         try:
@@ -106,21 +140,34 @@ class SupabaseAuthRepository(AuthRepository):
                     "email": request.email,
                     "token": request.token,
                     "type": request.type,
+                    "options": {
+                        "captcha_token": request.captcha_token,
+                    },
                 }
             )
             return self._format_auth_response(response)
+        except ApiError:
+            raise
+        except SupabaseAuthException as exc:
+            self._raise_provider_error(exc, operation="verify-otp")
         except Exception as exc:
-            raise UnauthorizedError(f"Código o token inválido o expirado: {str(exc)}") from exc
+            raise AuthUnavailableError() from exc
 
     async def reset_password_for_email(self, request: AuthForgotPasswordRequest) -> dict:
         try:
             options = {}
-            if request.redirect_to:
-                options["redirect_to"] = request.redirect_to
+            if self.recovery_redirect_url:
+                options["redirect_to"] = self.recovery_redirect_url
+            if request.captcha_token:
+                options["captcha_token"] = request.captcha_token
             self.client.auth.reset_password_for_email(request.email, options=options or None)
             return {"message": "Enlace de recuperación enviado al correo exitosamente."}
+        except ApiError:
+            raise
+        except SupabaseAuthException as exc:
+            self._raise_provider_error(exc, operation="forgot-password")
         except Exception as exc:
-            raise AuthError(f"Error al solicitar recuperación de contraseña: {str(exc)}") from exc
+            raise AuthUnavailableError() from exc
 
     async def update_user_password(self, jwt_token: str, request: AuthUpdatePasswordRequest) -> dict:
         try:
@@ -140,8 +187,12 @@ class SupabaseAuthRepository(AuthRepository):
                 "email": user_response.user.email,
                 "user_metadata": user_response.user.user_metadata or {},
             }
+        except ApiError:
+            raise
+        except SupabaseAuthException as exc:
+            self._raise_provider_error(exc, operation="update-password")
         except Exception as exc:
-            raise AuthError(f"Error al actualizar la contraseña: {str(exc)}") from exc
+            raise AuthUnavailableError() from exc
 
     async def get_user(self, jwt_token: str) -> dict | None:
         try:
@@ -154,8 +205,14 @@ class SupabaseAuthRepository(AuthRepository):
                 "email": user.email,
                 "user_metadata": user.user_metadata or {},
             }
-        except Exception:
-            return None
+        except AuthApiError as exc:
+            if exc.status in {400, 401, 403}:
+                return None
+            self._raise_provider_error(exc, operation="get-user")
+        except SupabaseAuthException as exc:
+            self._raise_provider_error(exc, operation="get-user")
+        except Exception as exc:
+            raise AuthUnavailableError() from exc
 
     async def sign_out(self, jwt_token: str) -> None:
         try:
@@ -164,9 +221,56 @@ class SupabaseAuthRepository(AuthRepository):
                 "logout",
                 jwt=jwt_token,
             )
-        except Exception:
-            # Ignoramos si el token ya expiró o la sesión fue cerrada
-            pass
+        except AuthApiError as exc:
+            if exc.status in {400, 401, 403}:
+                return
+            self._raise_provider_error(exc, operation="logout")
+        except SupabaseAuthException as exc:
+            self._raise_provider_error(exc, operation="logout")
+        except Exception as exc:
+            raise AuthUnavailableError() from exc
+
+    def _raise_provider_error(
+        self,
+        exc: SupabaseAuthException,
+        *,
+        operation: str,
+    ) -> NoReturn:
+        status = int(getattr(exc, "status", 0) or 0)
+        raw_code = getattr(exc, "code", None)
+        code = str(getattr(raw_code, "value", raw_code) or "")
+
+        if status == 429 or code in {
+            "over_email_send_rate_limit",
+            "over_request_rate_limit",
+        }:
+            raise AuthRateLimitError() from exc
+
+        if status >= 500 or isinstance(exc, AuthRetryableError):
+            raise AuthUnavailableError() from exc
+
+        if operation == "login":
+            raise InvalidCredentialsError() from exc
+        if operation == "verify-otp":
+            raise UnauthorizedError("Código o token inválido o expirado.") from exc
+        if operation in {"update-password", "get-user", "logout"} and status in {
+            400,
+            401,
+            403,
+        }:
+            raise UnauthorizedError() from exc
+        if code == "weak_password":
+            raise AuthError("La contraseña no cumple la política de seguridad.") from exc
+
+        safe_messages = {
+            "register": "No fue posible completar el registro.",
+            "send-otp": "No fue posible enviar el código de acceso.",
+            "forgot-password": "No fue posible procesar la recuperación de contraseña.",
+            "update-password": "No fue posible actualizar la contraseña.",
+            "get-user": "No fue posible validar la sesión.",
+            "logout": "No fue posible cerrar la sesión.",
+        }
+        raise AuthError(safe_messages.get(operation, "Error en autenticación.")) from exc
 
     def _format_auth_response(self, response: Any) -> dict:
         if isinstance(response, dict):

@@ -1,3 +1,7 @@
+from datetime import datetime
+from typing import Any
+
+from app.core.exceptions import RepositoryError
 from app.domain.schemas.resources.attempts import (
     AttemptRepositoryCreateRequest,
     AttemptRepositoryDeleteRequest,
@@ -28,3 +32,239 @@ class AttemptRepository(BaseSupabaseRepository):
 
     async def delete(self, request: AttemptRepositoryDeleteRequest) -> dict | None:
         return await self._delete(self.table_name, self.id_field, str(request.attempt_id))
+
+    async def get_exam(self, *, exam_id: str) -> dict[str, Any] | None:
+        try:
+            response = (
+                self.client.table("exams")
+                .select("exam_id,notebook_id,status")
+                .eq("exam_id", exam_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            raise RepositoryError("consultar el examen") from exc
+        return self._first(response.data)
+
+    async def has_notebook_access(self, *, notebook_id: str, user_id: str) -> bool:
+        try:
+            personal = (
+                self.client.table("personal_notebooks")
+                .select("notebook_id")
+                .eq("notebook_id", notebook_id)
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if personal.data:
+                return True
+
+            member = (
+                self.client.table("study_members")
+                .select("member_id")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            member_row = self._first(member.data)
+            if member_row is None:
+                return False
+
+            rooms = (
+                self.client.table("room_notebooks")
+                .select("room_id")
+                .eq("notebook_id", notebook_id)
+                .execute()
+            )
+            room_ids = [row["room_id"] for row in rooms.data or []]
+            if not room_ids:
+                return False
+
+            membership = (
+                self.client.table("members_rooms")
+                .select("room_id")
+                .eq("member_id", member_row["member_id"])
+                .in_("room_id", room_ids)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            raise RepositoryError("validar acceso al examen") from exc
+        return bool(membership.data)
+
+    async def list_exam_questions(self, *, exam_id: str) -> list[dict[str, Any]]:
+        try:
+            links_response = (
+                self.client.table("exam_questions")
+                .select("question_id,question_order,points")
+                .eq("exam_id", exam_id)
+                .order("question_order")
+                .execute()
+            )
+            links = links_response.data or []
+            if not links:
+                return []
+
+            question_ids = [row["question_id"] for row in links]
+            questions_response = (
+                self.client.table("questions")
+                .select("question_id,type,statement,expected_answer")
+                .in_("question_id", question_ids)
+                .execute()
+            )
+            options_response = (
+                self.client.table("questions_options")
+                .select("option_id,question_id,option_text,is_correct,option_order")
+                .in_("question_id", question_ids)
+                .order("option_order")
+                .execute()
+            )
+        except Exception as exc:
+            raise RepositoryError("listar preguntas del examen") from exc
+
+        questions_by_id = {
+            str(row["question_id"]): row for row in questions_response.data or []
+        }
+        options_by_question: dict[str, list[dict[str, Any]]] = {}
+        for option in options_response.data or []:
+            options_by_question.setdefault(str(option["question_id"]), []).append(option)
+
+        questions: list[dict[str, Any]] = []
+        for link in links:
+            question_id = str(link["question_id"])
+            question = questions_by_id.get(question_id)
+            if question is None:
+                continue
+            questions.append(
+                {
+                    **question,
+                    "question_order": link["question_order"],
+                    "points": link["points"],
+                    "options": options_by_question.get(question_id, []),
+                }
+            )
+        return questions
+
+    async def get_active_attempt(
+        self, *, exam_id: str, user_id: str
+    ) -> dict[str, Any] | None:
+        try:
+            response = (
+                self.client.table(self.table_name)
+                .select("*")
+                .eq("exam_id", exam_id)
+                .eq("user_id", user_id)
+                .eq("status", "in_progress")
+                .order("started_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            raise RepositoryError("consultar el intento activo") from exc
+        return self._first(response.data)
+
+    async def create_workflow_attempt(
+        self, *, exam_id: str, user_id: str, started_at: datetime
+    ) -> dict[str, Any] | None:
+        try:
+            response = (
+                self.client.table(self.table_name)
+                .insert(
+                    {
+                        "exam_id": exam_id,
+                        "user_id": user_id,
+                        "score": 0,
+                        "status": "in_progress",
+                        "started_at": started_at.isoformat(),
+                        "spent_time": 0,
+                    }
+                )
+                .execute()
+            )
+        except Exception as exc:
+            if self._is_unique_violation(exc):
+                return None
+            raise RepositoryError("iniciar el intento") from exc
+        return self._first(response.data)
+
+    async def get_attempt_for_user(
+        self, *, attempt_id: str, user_id: str
+    ) -> dict[str, Any] | None:
+        try:
+            response = (
+                self.client.table(self.table_name)
+                .select("*")
+                .eq("attempt_id", attempt_id)
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            raise RepositoryError("consultar el intento") from exc
+        return self._first(response.data)
+
+    async def list_attempt_answers(self, *, attempt_id: str) -> list[dict[str, Any]]:
+        try:
+            response = (
+                self.client.table("user_answers")
+                .select("*")
+                .eq("attempt_id", attempt_id)
+                .order("created_at")
+                .execute()
+            )
+        except Exception as exc:
+            raise RepositoryError("listar respuestas del intento") from exc
+        return response.data or []
+
+    async def submit_workflow_answer(
+        self,
+        *,
+        attempt_id: str,
+        user_id: str,
+        question_id: str,
+        selected_option_id: str | None,
+        answer_text: str | None,
+    ) -> dict[str, Any] | None:
+        try:
+            response = self.client.rpc(
+                "submit_exam_attempt_answer",
+                {
+                    "p_attempt_id": attempt_id,
+                    "p_user_id": user_id,
+                    "p_question_id": question_id,
+                    "p_selected_option_id": selected_option_id,
+                    "p_answer_text": answer_text,
+                },
+            ).execute()
+        except Exception as exc:
+            raise RepositoryError("guardar la respuesta") from exc
+        return self._first(response.data)
+
+    async def finalize_workflow_attempt(
+        self,
+        *,
+        attempt_id: str,
+        user_id: str,
+        completed_at: datetime,
+        spent_time: int,
+        grades: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        try:
+            response = self.client.rpc(
+                "finalize_exam_attempt",
+                {
+                    "p_attempt_id": attempt_id,
+                    "p_user_id": user_id,
+                    "p_completed_at": completed_at.isoformat(),
+                    "p_spent_time": spent_time,
+                    "p_grades": grades,
+                },
+            ).execute()
+        except Exception as exc:
+            raise RepositoryError("finalizar el intento") from exc
+        return self._first(response.data)
+
+    def _is_unique_violation(self, exc: Exception) -> bool:
+        code = getattr(exc, "code", None)
+        message = str(exc).lower()
+        return code == "23505" or "attempts_one_active_per_user_exam" in message

@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_users_use_case
+from app.api.dependencies import get_current_user, get_users_use_case
 from app.application.usecases import UserUseCase
 from app.core.query import get_api_query_params
 from app.domain.schemas.resources.users import (
@@ -11,6 +11,7 @@ from app.domain.schemas.resources.users import (
     UserRepositoryGetRequest,
     UserRepositoryListRequest,
     UserRepositoryUpdateRequest,
+    UserRead,
 )
 from app.main import app
 
@@ -69,10 +70,14 @@ class FakeCrudRepository:
         return await self.get(UserRepositoryGetRequest(user_id=request.user_id))
 
 
-def test_crud_hides_sensitive_fields_and_uses_spanish_errors() -> None:
+def test_users_surface_is_self_only_and_account_creation_is_auth_owned() -> None:
     repository = FakeCrudRepository()
     app.dependency_overrides[get_users_use_case] = lambda: UserUseCase(repository)
-    client = TestClient(app)
+    app.dependency_overrides[get_current_user] = lambda: UserRead(
+        user_id="00000000-0000-0000-0000-000000000001",
+        email="ada@example.test",
+    )
+    client = TestClient(app, headers={"Authorization": "Bearer test-token"})
 
     list_response = client.get("/api/v1/users")
     assert list_response.status_code == 200
@@ -87,12 +92,10 @@ def test_crud_hides_sensitive_fields_and_uses_spanish_errors() -> None:
             "hash_password": "secret",
         },
     )
-    assert create_response.status_code == 201
-    assert "hash_password" not in create_response.json()["data"]
+    assert create_response.status_code == 405
 
     invalid_response = client.post("/api/v1/users", json={"name": "Incomplete"})
-    assert invalid_response.status_code == 422
-    assert invalid_response.json()["detail"] == "La solicitud no es valida."
+    assert invalid_response.status_code == 405
 
     missing_response = client.get("/api/v1/users/00000000-0000-0000-0000-000000000099")
     assert missing_response.status_code == 404
@@ -101,10 +104,14 @@ def test_crud_hides_sensitive_fields_and_uses_spanish_errors() -> None:
     app.dependency_overrides.clear()
 
 
-def test_crud_supports_core_pagination_and_filters() -> None:
+def test_users_list_never_enumerates_other_profiles() -> None:
     repository = FakeCrudRepository()
     app.dependency_overrides[get_users_use_case] = lambda: UserUseCase(repository)
-    client = TestClient(app)
+    app.dependency_overrides[get_current_user] = lambda: UserRead(
+        user_id="00000000-0000-0000-0000-000000000001",
+        email="ada@example.test",
+    )
+    client = TestClient(app, headers={"Authorization": "Bearer test-token"})
 
     response = client.get("/api/v1/users?page=1&per_page=1&name=Linus")
 
@@ -112,7 +119,9 @@ def test_crud_supports_core_pagination_and_filters() -> None:
     body = response.json()
     assert body["limit"] == 1
     assert body["offset"] == 0
-    assert [item["name"] for item in body["data"]] == ["Linus"]
+    assert [item["user_id"] for item in body["data"]] == [
+        "00000000-0000-0000-0000-000000000001"
+    ]
 
     app.dependency_overrides.clear()
 

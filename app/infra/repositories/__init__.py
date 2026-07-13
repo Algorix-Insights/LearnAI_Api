@@ -12,6 +12,7 @@ from app.infra.repositories.study_members import StudyMemberRepository
 from app.infra.repositories.tags import TagRepository
 from app.infra.repositories.user_answers import UserAnswerRepository
 from app.infra.repositories.users import PersonalNotebookRepository, UserRepository
+from app.infra.repositories.user_statistics import UserStatisticsRepository
 
 __all__ = [
     "AttemptRepository",
@@ -33,4 +34,5 @@ __all__ = [
     "TagRepository",
     "UserAnswerRepository",
     "UserRepository",
+    "UserStatisticsRepository",
 ]

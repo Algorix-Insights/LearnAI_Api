@@ -10,15 +10,13 @@ class UserAnswerSchema(BaseModel):
 
 
 class UserAnswerRead(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="ignore")
 
     answer_id: UUID | None = None
     attempt_id: UUID | None = None
     question_id: UUID | None = None
     selected_option_id: UUID | None = None
     answer_text: str | None = None
-    is_correct: bool | None = None
-    points_awarded: float | None = None
     created_at: str | None = None
 
 

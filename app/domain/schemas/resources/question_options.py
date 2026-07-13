@@ -10,12 +10,12 @@ class QuestionOptionSchema(BaseModel):
 
 
 class QuestionOptionRead(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    # `is_correct` is grading material and must stay server-side.
+    model_config = ConfigDict(extra="ignore")
 
     option_id: UUID | None = None
     question_id: UUID | None = None
     option_text: str | None = None
-    is_correct: bool | None = None
     option_order: int | None = None
     created_at: str | None = None
 
