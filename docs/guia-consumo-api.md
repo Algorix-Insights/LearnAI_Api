@@ -230,7 +230,10 @@ GET /api/v1/tags?limit=100&offset=0
 
 El listado combina las tags globales creadas antes de incorporar propiedad con las tags
 privadas del usuario autenticado. Nunca incluye tags privadas de otra cuenta y se ordena por
-nombre e identificador. Solo entrega tags activas.
+nombre e identificador. Solo entrega tags activas. Al crear el perfil de aplicación en
+`public.users`, un trigger garantiza una tag privada activa llamada `general`; la migración
+también incorpora esa tag a los perfiles existentes. Esta creación no requiere cuadernos y no
+inserta relaciones en `notebook_tags`.
 
 ```json
 {

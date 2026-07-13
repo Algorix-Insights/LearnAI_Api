@@ -221,6 +221,7 @@ def test_tag_repository_sets_owner_from_the_server_request() -> None:
 
     insert_call = next(call for call in query.calls if call[0] == "insert")
     assert insert_call[1]["created_by_user_id"] == str(USER_ID)
+    assert [call for call in query.calls if call[0] == "table"] == [("table", "tags")]
     assert result["scope"] == "user"
     assert "created_by_user_id" not in result
 
