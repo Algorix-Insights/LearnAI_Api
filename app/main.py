@@ -53,9 +53,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=app_settings.app_name,
         version=app_settings.app_version,
     )
+    
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(ValidationError, validation_error_handler)
+    
     app.add_middleware(ApiQueryMiddleware, api_prefix=app_settings.api_v1_prefix)
     app.add_middleware(
         SecurityMiddleware,
@@ -65,6 +67,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(health_router)
     app.include_router(api_router, prefix=app_settings.api_v1_prefix)
+
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
     return app
 
 
