@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictSchema(BaseModel):
@@ -298,8 +298,12 @@ class DocumentChunkUpdate(StrictSchema):
 
 
 class TagCreate(StrictSchema):
-    name: str = Field(max_length=100)
-    status: Literal["active", "inactive"] = "active"
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class TagUpdate(StrictSchema):

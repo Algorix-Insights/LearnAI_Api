@@ -9,13 +9,13 @@ def test_sensitive_creation_is_only_exposed_through_owned_workflows() -> None:
     assert "post" in paths["/api/v1/notebooks/{notebook_id}/flashcards/generate"]
     assert "get" in paths["/api/v1/notebooks/{notebook_id}/flashcards"]
     assert "post" in paths["/api/v1/notebooks/{notebook_id}/exams/generate"]
+    assert "post" in paths["/api/v1/tags"]
 
     for path in (
         "/api/v1/questions",
         "/api/v1/question-options",
         "/api/v1/documents",
         "/api/v1/document-chunks",
-        "/api/v1/tags",
         "/api/v1/flashcards",
         "/api/v1/exams",
     ):

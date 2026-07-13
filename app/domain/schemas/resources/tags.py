@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,13 +10,11 @@ class TagSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TagRead(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    tag_id: UUID | None = None
-    id: UUID | None = None
-    name: str | None = None
-    status: str | None = None
+class TagRead(TagSchema):
+    id: UUID
+    name: str
+    status: Literal["active", "inactive"]
+    scope: Literal["system", "user"]
 
 
 class TagResponse(TagSchema):
@@ -51,20 +50,20 @@ class TagDeleteRequest(TagSchema):
 
 
 class TagRepositoryListRequest(TagListRequest):
-    pass
+    user_id: UUID
 
 
 class TagRepositoryGetRequest(TagPath):
-    pass
+    user_id: UUID
 
 
 class TagRepositoryCreateRequest(TagCreateRequest):
-    pass
+    user_id: UUID
 
 
 class TagRepositoryUpdateRequest(TagUpdateRequest):
-    pass
+    user_id: UUID
 
 
 class TagRepositoryDeleteRequest(TagDeleteRequest):
-    pass
+    user_id: UUID

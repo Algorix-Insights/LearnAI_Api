@@ -86,7 +86,7 @@ Códigos relevantes:
 | Home: próximos vencimientos y racha            | `GET /users/me/statistics` → `upcoming`, `streak`                      |
 | Dashboard: calificación, dominio y aprendizaje | `GET /users/me/statistics` → `overview`, `reinforcement`, `learning` |
 | Dashboard: tiempo y actividad                   | `GET /users/me/statistics` → `time_by_notebook`, `recent_activity`     |
-| Biblioteca                                      | `GET /notebooks`                                                            |
+| Biblioteca                                      | `GET /notebooks`, `GET /tags`                                             |
 | Salas de estudio                                | `GET /rooms`                                                                |
 | Cuaderno: fuentes                               | upload/listado de documentos RAG                                              |
 | Cuaderno: chat y recursos                       | conversaciones, generación de flashcards y exámenes                         |
@@ -220,19 +220,65 @@ GET /api/v1/rooms?limit=20&offset=0
 
 RLS limita los resultados a recursos accesibles por el usuario autenticado.
 
+## Tags disponibles
+
+### Listar el catálogo del usuario
+
+```http
+GET /api/v1/tags?limit=100&offset=0
+```
+
+El listado combina las tags globales creadas antes de incorporar propiedad con las tags
+privadas del usuario autenticado. Nunca incluye tags privadas de otra cuenta y se ordena por
+nombre e identificador. Solo entrega tags activas.
+
+```json
+{
+  "data": [
+    {
+      "id": "d92f93ec-f6db-43b1-a53e-4fd1d5e34fe3",
+      "name": "Universidad",
+      "status": "active",
+      "scope": "system"
+    }
+  ],
+  "limit": 100,
+  "offset": 0
+}
+```
+
+### Crear una tag privada
+
+```http
+POST /api/v1/tags
+```
+
+```json
+{
+  "name": "Algoritmos"
+}
+```
+
+El servidor recorta espacios y obtiene el propietario exclusivamente del JWT. No envíes
+`user_id`, `created_by_user_id` ni `status`; esos campos producen `422`. Toda tag nueva queda
+activa. Los nombres son únicos por
+usuario sin distinguir mayúsculas, minúsculas ni espacios exteriores. Un duplicado devuelve
+`409`; una creación nueva devuelve `201` y `scope: "user"`. Las tags legacy compartidas usan
+`scope: "system"`.
+
 ## RAG: fuentes y chat
 
 ### Cuotas durables de IA
 
 Las operaciones que consumen proveedores de IA tienen cuotas por usuario, persistidas en PostgreSQL. Se comparten entre instancias del API y no se reinician al desplegar o reiniciar el servidor.
 
-| Operación            | Endpoint principal                                      | Por hora móvil | Por día UTC    |
-| -------------------- | ------------------------------------------------------- | -------------: | -------------: |
-| Chat                 | `POST /conversations/{conversation_id}/messages`        |             30 |            200 |
-| Embeddings           | `POST /notebooks/{notebook_id}/documents/upload`        |             20 |            100 |
-| Flashcards           | `POST /notebooks/{notebook_id}/flashcards/generate`     |             10 |             30 |
-| Examen               | `POST /notebooks/{notebook_id}/exams/generate`          |              5 |             15 |
-| Calificación abierta | `POST /attempts/{attempt_id}/finish`                     |  30 respuestas | 100 respuestas |
+| Operación            | Endpoint principal                                    | Por hora móvil |   Por día UTC |
+| --------------------- | ----------------------------------------------------- | --------------: | -------------: |
+| Chat                  | `POST /conversations/{conversation_id}/messages`    |              30 |            200 |
+| Embeddings            | `POST /notebooks/{notebook_id}/documents/upload`    |              20 |            100 |
+| Flashcards            | `POST /notebooks/{notebook_id}/flashcards/generate` |              10 |             30 |
+| Examen                | `POST /notebooks/{notebook_id}/exams/generate`      |               5 |             15 |
+| Calificación abierta | `POST /attempts/{attempt_id}/finish`                |   30 respuestas | 100 respuestas |
 
 Cuando se alcanza una cuota, el API responde `429`:
 

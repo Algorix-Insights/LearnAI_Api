@@ -36,6 +36,7 @@ El backend maneja reglas de negocio sensibles y varias integraciones externas. S
 
 - `app/api`: endpoints FastAPI. Deben mapear request/response y delegar a casos de uso.
 - `app/application/usecases`: casos de uso por agregado o relacion REST.
+- `app/application/usecases/rag.py`: fachada pública de RAG; delega documentos, chat, generación y utilidades de IA a `rag_support`.
 - `app/domain/schemas`: contratos Pydantic de entidades, requests, responses y repositorios.
 - `app/domain/interfaces`: contratos `Protocol` de repositorios por recurso.
 - `app/domain/services`: reglas de dominio y normalizacion.
@@ -143,7 +144,7 @@ La API estará disponible en `http://127.0.0.1:8000`. Puedes acceder a la docume
 
 ### Base de datos Supabase
 
-Las migraciones versionadas viven en `supabase/migrations/`. Esta entrega contiene 12 migraciones timestamped, de `20260713000100_initial_schema.sql` a `20260713001200_ai_usage_quotas.sql`. Antes de aplicar cambios a un proyecto existente, ejecuta `scripts/security_preflight.sql` y revisa cualquier policy ajena a `learnia_*`.
+Las migraciones versionadas viven en `supabase/migrations/`. Esta entrega contiene 13 migraciones timestamped, de `20260713000100_initial_schema.sql` a `20260713001300_user_owned_tags.sql`. Antes de aplicar cambios a un proyecto existente, ejecuta `scripts/security_preflight.sql` y revisa cualquier policy ajena a `learnia_*`.
 
 ```bash
 npx supabase db push --dry-run --db-url "$SUPABASE_SESSION_URL" --include-all

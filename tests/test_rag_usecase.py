@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from app.application.usecases.rag import RagUseCase
 from app.core.config import Settings
-from app.core.exceptions import BadRequestError
+from app.core.exceptions import BadRequestError, ForbiddenError
 from app.domain.schemas.resources.rag import (
     ChatRequest,
     ExamGenerationRequest,
@@ -142,8 +142,16 @@ class FakeSearch:
 
 
 class FakeAccess:
+    def __init__(self, *, can_manage: bool = True) -> None:
+        self.can_manage = can_manage
+
     async def has_notebook_access(self, *, user_id: str, notebook_id: str) -> bool:
         return True
+
+    async def has_notebook_manage_access(
+        self, *, user_id: str, notebook_id: str
+    ) -> bool:
+        return self.can_manage
 
 
 class FakeQuestions:
@@ -246,9 +254,11 @@ class FakeLlm:
     def __init__(self, structured_responses: list[dict[str, Any] | str] | None = None) -> None:
         self.structured_responses = list(structured_responses or [])
         self.chat_payloads: list[dict[str, Any]] = []
+        self.embedding_calls: list[list[str]] = []
 
     async def embeddings(self, *, model: str, input, **params) -> dict:
         items = input if isinstance(input, list) else [input]
+        self.embedding_calls.append(items)
         return {"data": [{"embedding": [0.1] * 1536} for _ in items]}
 
     async def chat_completion(self, *, messages, model=None, stream=False, **params) -> dict:
@@ -301,6 +311,7 @@ def make_use_case(
     generation=None,
     usage=None,
     document_processor: RagDocumentProcessor | None = None,
+    access: FakeAccess | None = None,
 ) -> tuple[RagUseCase, FakeStorage, FakeChunks, FakeConversations]:
     storage = FakeStorage()
     chunks = FakeChunks()
@@ -315,7 +326,7 @@ def make_use_case(
         question_options=FakeQuestionOptions(),
         flashcards=FakeFlashcards(),
         search=FakeSearch(),
-        access=FakeAccess(),
+        access=access or FakeAccess(),
         storage=storage,
         llm=llm or FakeLlm(),
         settings=Settings(openrouter_api_key="test-key"),
@@ -417,6 +428,35 @@ def test_rag_rejects_oversized_document_before_reading() -> None:
         )
 
     assert storage.uploads == []
+
+
+def test_rag_reader_cannot_run_manager_workflows_or_reach_providers() -> None:
+    llm = FakeLlm()
+    use_case, storage, _, _ = make_use_case(
+        llm,
+        access=FakeAccess(can_manage=False),
+    )
+
+    with pytest.raises(ForbiddenError):
+        run_async(
+            use_case.upload_document(
+                notebook_id=NOTEBOOK_ID,
+                user_id=USER_ID,
+                file=upload_file("notas.txt", b"contenido", "text/plain"),
+            )
+        )
+    with pytest.raises(ForbiddenError):
+        run_async(
+            use_case.generate_flashcards(
+                notebook_id=NOTEBOOK_ID,
+                user_id=USER_ID,
+                request=FlashcardGenerationRequest(count=1),
+            )
+        )
+
+    assert storage.uploads == []
+    assert llm.embedding_calls == []
+    assert llm.chat_payloads == []
 
 
 def test_rag_reserves_durable_ingestion_quota_before_cpu_heavy_parsing() -> None:
