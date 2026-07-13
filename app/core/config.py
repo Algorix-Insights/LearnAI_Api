@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     documents_bucket: str = "documents"
     profile_bucket: str = "profile"
     rag_match_limit: int = 6
+    max_request_body_bytes: int = 12 * 1024 * 1024
 
 
 @lru_cache

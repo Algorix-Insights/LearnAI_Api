@@ -18,7 +18,6 @@ class RoomNotebookUseCase:
             RoomNotebookRepositoryCreateRequest(
                 room_id=room_id,
                 notebook_id=request.notebook_id,
-                created_by=request.created_by,
             )
         )
         return RoomNotebookResponse(data=data)

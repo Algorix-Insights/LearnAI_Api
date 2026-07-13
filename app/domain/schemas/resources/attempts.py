@@ -118,6 +118,8 @@ class SubmittedAttemptAnswerRead(AttemptSchema):
     question_id: UUID
     selected_option_id: UUID | None = None
     answer_text: str | None = None
+    is_correct: bool | None = None
+    points_awarded: float | None = Field(default=None, ge=0)
     created_at: datetime | None = None
 
 
@@ -138,6 +140,15 @@ class SubmittedAttemptAnswerResponse(AttemptSchema):
     data: SubmittedAttemptAnswerRead
 
 
+class GradedAttemptAnswerRead(AttemptSchema):
+    answer_id: UUID
+    question_id: UUID
+    is_correct: bool
+    points_awarded: float = Field(ge=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    feedback: str | None = None
+
+
 class FinishedAttemptRead(AttemptSchema):
     attempt_id: UUID
     exam_id: UUID
@@ -149,6 +160,7 @@ class FinishedAttemptRead(AttemptSchema):
     total_questions: int = Field(ge=0)
     completed_at: datetime
     spent_time: int = Field(ge=0)
+    answers: list[GradedAttemptAnswerRead] = Field(default_factory=list)
 
 
 class FinishedAttemptResponse(AttemptSchema):

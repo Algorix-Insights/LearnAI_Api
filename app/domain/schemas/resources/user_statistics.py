@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class UserStatisticsSchema(BaseModel):
@@ -90,8 +90,21 @@ class UserStatisticsResponse(UserStatisticsSchema):
 class LearningEventCreate(UserStatisticsSchema):
     notebook_id: UUID
     activity_type: Literal["study_session", "flashcard_reviewed"]
-    quantity: int = Field(default=1, ge=1, le=100)
-    duration_seconds: int = Field(default=0, ge=0, le=86_400)
+    quantity: int = Field(default=1, ge=1, le=50)
+    duration_seconds: int = Field(default=0, ge=0, le=14_400)
+
+    @model_validator(mode="after")
+    def validate_activity_shape(self) -> "LearningEventCreate":
+        if self.activity_type == "study_session":
+            if self.quantity != 1:
+                raise ValueError("Una sesion de estudio debe tener quantity=1.")
+            if self.duration_seconds < 30:
+                raise ValueError("Una sesion de estudio debe durar al menos 30 segundos.")
+        elif self.duration_seconds > 3_600:
+            raise ValueError(
+                "Un lote de repaso de flashcards no puede superar 3600 segundos."
+            )
+        return self
 
 
 class LearningEventRead(UserStatisticsSchema):

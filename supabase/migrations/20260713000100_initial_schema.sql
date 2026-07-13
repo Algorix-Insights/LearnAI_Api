@@ -415,3 +415,26 @@ CREATE TRIGGER trg_ai_conversations_updated_at
 BEFORE UPDATE ON ai_conversations
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
+
+-- Supabase exposes public-schema tables through the Data API. Keep every table
+-- fail-closed from the migration that creates it; later migrations install the
+-- operation-specific policies and grants.
+ALTER TABLE public.health ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notebooks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.study_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.members_rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.personal_notebooks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.room_notebooks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exam_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questions_options ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_answers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.flashcards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;

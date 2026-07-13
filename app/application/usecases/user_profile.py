@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import logging
 from uuid import UUID
 
 from fastapi import UploadFile
@@ -19,6 +20,9 @@ from app.domain.schemas.resources.users import (
 )
 from app.domain.services.rag import ProfileImageProcessor
 from app.infra.storage import SupabaseStorage
+
+
+logger = logging.getLogger("learnia.profile")
 
 
 class UserProfileUseCase:
@@ -48,26 +52,28 @@ class UserProfileUseCase:
             path=path,
             content=content,
             content_type=content_type,
-            upsert=True,
+            upsert=False,
         )
-        updated = await self.users.update(
-            UserRepositoryUpdateRequest(
-                user_id=user_id,
-                payload=UserUpdate(
-                    profile_image_path=path,
-                    profile_image_mime_type=content_type,
-                    profile_image_size_bytes=len(content),
-                ),
-                updated_at=datetime.now(UTC),
+        try:
+            updated = await self.users.update(
+                UserRepositoryUpdateRequest(
+                    user_id=user_id,
+                    payload=UserUpdate(
+                        profile_image_path=path,
+                        profile_image_mime_type=content_type,
+                        profile_image_size_bytes=len(content),
+                    ),
+                    updated_at=datetime.now(UTC),
+                )
             )
-        )
+        except Exception:
+            await self._delete_best_effort(path)
+            raise
         if updated is None:
-            await self.storage.delete(bucket=self.settings.profile_bucket, paths=[path])
+            await self._delete_best_effort(path)
             raise ResourceNotFoundError()
         if previous_path and previous_path != path:
-            await self.storage.delete(
-                bucket=self.settings.profile_bucket, paths=[str(previous_path)]
-            )
+            await self._delete_best_effort(str(previous_path))
         return await self._response(user_id, updated)
 
     async def get_photo(self, *, user_id: UUID) -> ProfilePhotoResponse:
@@ -79,10 +85,6 @@ class UserProfileUseCase:
     ) -> ProfilePhotoDeleteResponse:
         user = await self._get_user(user_id)
         path = user.get("profile_image_path")
-        if path:
-            await self.storage.delete(
-                bucket=self.settings.profile_bucket, paths=[str(path)]
-            )
         updated = await self.users.update(
             UserRepositoryUpdateRequest(
                 user_id=user_id,
@@ -96,7 +98,18 @@ class UserProfileUseCase:
         )
         if updated is None:
             raise ResourceNotFoundError()
+        if path:
+            await self._delete_best_effort(str(path))
         return ProfilePhotoDeleteResponse(deleted=bool(path))
+
+    async def _delete_best_effort(self, path: str) -> None:
+        try:
+            await self.storage.delete(
+                bucket=self.settings.profile_bucket,
+                paths=[path],
+            )
+        except Exception:
+            logger.warning("profile_storage_cleanup_failed", exc_info=True)
 
     async def _get_user(self, user_id: UUID) -> dict:
         user = await self.users.get(UserRepositoryGetRequest(user_id=user_id))

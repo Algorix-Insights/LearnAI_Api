@@ -29,6 +29,15 @@ ON user_learning_events (notebook_id, occurred_at DESC);
 ALTER TABLE user_learning_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_learning_events FORCE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS learnia_active_user_guard ON user_learning_events;
+CREATE POLICY learnia_active_user_guard
+ON user_learning_events
+AS RESTRICTIVE
+FOR ALL
+TO authenticated
+USING (public.current_user_is_active())
+WITH CHECK (public.current_user_is_active());
+
 DROP POLICY IF EXISTS user_learning_events_select_own ON user_learning_events;
 CREATE POLICY user_learning_events_select_own
 ON user_learning_events
@@ -37,27 +46,9 @@ TO authenticated
 USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS user_learning_events_insert_client_activity ON user_learning_events;
-CREATE POLICY user_learning_events_insert_client_activity
-ON user_learning_events
-FOR INSERT
-TO authenticated
-WITH CHECK (
-    user_id = auth.uid()
-    AND activity_type IN ('study_session', 'flashcard_reviewed')
-    AND EXISTS (
-        SELECT 1
-        FROM personal_notebooks pn
-        WHERE pn.notebook_id = user_learning_events.notebook_id
-          AND pn.user_id = auth.uid()
-        UNION ALL
-        SELECT 1
-        FROM room_notebooks rn
-        JOIN members_rooms mr ON mr.room_id = rn.room_id
-        JOIN study_members sm ON sm.member_id = mr.member_id
-        WHERE rn.notebook_id = user_learning_events.notebook_id
-          AND sm.user_id = auth.uid()
-    )
-);
+-- Client writes are enabled only by the bounded, actor-derived RPC in migration
+-- 009. Until then, the table intentionally remains read-only and fail-closed.
 
-REVOKE ALL ON TABLE user_learning_events FROM anon;
-GRANT SELECT, INSERT ON TABLE user_learning_events TO authenticated;
+REVOKE ALL ON TABLE user_learning_events FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE user_learning_events TO authenticated;
+GRANT ALL PRIVILEGES ON TABLE user_learning_events TO service_role;

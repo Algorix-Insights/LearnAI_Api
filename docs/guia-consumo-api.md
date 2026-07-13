@@ -1,40 +1,30 @@
-# Guia de consumo de API
+# Guía de consumo de la API
 
-Estado actual: la aplicacion expone CRUD, relaciones entre agregados, upload de archivos, vectorizacion RAG sincrona y conversaciones con LLM por notebook. La autenticacion fina todavia no forma parte de esta guia; los endpoints multitenant reciben `user_id` para validar acceso a notebooks personales o notebooks de study rooms.
+Esta guía describe el contrato público que debe usar frontend para perfil, cuadernos, salas, RAG, evaluaciones y estadísticas. La identidad siempre se obtiene del JWT: no envíes `user_id`, `created_by`, `score`, `is_correct` ni campos de propiedad en el body.
 
-## Base
+## Base y autenticación
 
 - Base local: `http://127.0.0.1:8000`
-- Prefijo versionado: `/api/v1`
-- Swagger/OpenAPI: `/docs`
+- Prefijo: `/api/v1`
+- OpenAPI: `/docs`
 - Health checks: `/health` y `/api/v1/health`
-- Content-Type esperado: `application/json`
-- Uploads: `multipart/form-data`
+- JSON: `Content-Type: application/json`
+- Archivos: `multipart/form-data`
 
-Ejemplo:
+Salvo `/auth/*` y los health checks, todas las rutas requieren el access token de Supabase:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Ejemplo base:
 
 ```bash
-curl http://127.0.0.1:8000/api/v1/users?limit=20&offset=0
+curl http://127.0.0.1:8000/api/v1/users/me \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
-## Respuestas
-
-Las respuestas de item usan el contrato especifico del recurso:
-
-```json
-{
-  "data": {
-    "user_id": "00000000-0000-0000-0000-000000000000",
-    "name": "Carlos",
-    "last_name": "Gonzalez",
-    "email": "carlos@example.com",
-    "streak": 0,
-    "status": "active"
-  }
-}
-```
-
-Las respuestas de lista incluyen paginacion:
+Las respuestas de un recurso usan `{ "data": ... }`. Los listados agregan `limit` y `offset`.
 
 ```json
 {
@@ -44,13 +34,9 @@ Las respuestas de lista incluyen paginacion:
 }
 ```
 
-Los endpoints `DELETE` devuelven el registro eliminado cuando la base de datos lo retorna.
+## Errores y reintentos
 
-## Errores
-
-Los mensajes de error del API se devuelven en espanol.
-
-Errores de dominio o repositorio:
+Los errores de dominio tienen una forma estable:
 
 ```json
 {
@@ -58,363 +44,639 @@ Errores de dominio o repositorio:
 }
 ```
 
-Errores de validacion:
+Los errores de validación incluyen campos:
 
 ```json
 {
   "detail": "La solicitud no es valida.",
   "errors": [
     {
-      "field": "body.email",
+      "field": "body.name",
       "type": "missing"
     }
   ]
 }
 ```
 
-Codigos principales:
+Códigos relevantes:
 
-- `200`: consulta, actualizacion o eliminacion correcta.
-- `201`: creacion correcta.
-- `400`: payload vacio en operaciones `PATCH`.
-- `403`: usuario sin acceso al notebook solicitado.
-- `404`: recurso no encontrado.
-- `422`: request invalido por contrato Pydantic.
-- `500`: error de persistencia.
+- `200`/`201`: operación correcta.
+- `400`: regla de negocio o archivo inválido.
+- `401`: JWT ausente, vencido o inválido.
+- `403`: el usuario no tiene acceso al recurso.
+- `404`: recurso inexistente o ajeno; el API evita revelar recursos de otros usuarios.
+- `409`: conflicto de estado, intento activo o clave idempotente reutilizada con otro payload.
+- `413`: request mayor al límite global configurado.
+- `422`: payload no cumple el contrato.
+- `429`: límite de frecuencia; respeta el header `Retry-After` y no hagas reintentos inmediatos.
+- `503`: autenticación temporalmente no disponible.
 
-## Paginacion
+## Contratos para las pantallas
 
-Los listados aceptan query params:
+| Pantalla o bloque                               | Fuente principal                                                              |
+| ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| Perfil y avatar del header                      | `GET /users/me`, `GET /users/me/profile-photo`                            |
+| Home: próximos vencimientos y racha            | `GET /users/me/statistics` → `upcoming`, `streak`                      |
+| Dashboard: calificación, dominio y aprendizaje | `GET /users/me/statistics` → `overview`, `reinforcement`, `learning` |
+| Dashboard: tiempo y actividad                   | `GET /users/me/statistics` → `time_by_notebook`, `recent_activity`     |
+| Biblioteca                                      | `GET /notebooks`                                                            |
+| Salas de estudio                                | `GET /rooms`                                                                |
+| Cuaderno: fuentes                               | upload/listado de documentos RAG                                              |
+| Cuaderno: chat y recursos                       | conversaciones, generación de flashcards y exámenes                         |
 
-- `limit`: entero entre `1` y `500`. Default: `100`.
-- `offset`: entero mayor o igual a `0`. Default: `0`.
-- `page`: entero mayor o igual a `1`. Si se envia, calcula `offset`.
-- `per_page`: entero entre `1` y `500`. Alias de `limit` cuando se usa con `page`.
+## Perfil del usuario
 
-Ejemplo:
+### Consultar y editar el perfil propio
 
-```bash
-curl "http://127.0.0.1:8000/api/v1/notebooks?limit=50&offset=0"
+```http
+GET /api/v1/users/me
+PATCH /api/v1/users/me
 ```
 
-Tambien se puede paginar por pagina:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/notebooks?page=2&per_page=25"
-```
-
-## Filtros
-
-Los listados aceptan filtros genericos por query params. El filtro simple usa igualdad:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/users?status=active"
-```
-
-Los operadores soportados usan el formato `campo__operador=valor`:
-
-- `eq`: igual. Tambien es el default si no se envia operador.
-- `neq`: distinto.
-- `gt`, `gte`, `lt`, `lte`: comparaciones.
-- `like`, `ilike`: patrones PostgREST.
-- `in`: lista separada por coma.
-- `is`: `null`, `true` o `false`.
-
-Ejemplos:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/notebooks?grade__gte=3&status__in=active,draft"
-curl "http://127.0.0.1:8000/api/v1/users?email__ilike=%25@example.com"
-```
-
-## CRUD por recurso
-
-Todos estos recursos siguen el mismo patron REST:
-
-| Recurso | Listar | Crear | Obtener | Actualizar | Eliminar |
-| --- | --- | --- | --- | --- | --- |
-| Users | `GET /api/v1/users` | `POST /api/v1/users` | `GET /api/v1/users/{user_id}` | `PATCH /api/v1/users/{user_id}` | `DELETE /api/v1/users/{user_id}` |
-| Notebooks | `GET /api/v1/notebooks` | `POST /api/v1/notebooks` | `GET /api/v1/notebooks/{notebook_id}` | `PATCH /api/v1/notebooks/{notebook_id}` | `DELETE /api/v1/notebooks/{notebook_id}` |
-| Rooms | `GET /api/v1/rooms` | `POST /api/v1/rooms` | `GET /api/v1/rooms/{room_id}` | `PATCH /api/v1/rooms/{room_id}` | `DELETE /api/v1/rooms/{room_id}` |
-| Study members | `GET /api/v1/study-members` | `POST /api/v1/study-members` | `GET /api/v1/study-members/{member_id}` | `PATCH /api/v1/study-members/{member_id}` | `DELETE /api/v1/study-members/{member_id}` |
-| Exams | `GET /api/v1/exams` | `POST /api/v1/exams` | `GET /api/v1/exams/{exam_id}` | `PATCH /api/v1/exams/{exam_id}` | `DELETE /api/v1/exams/{exam_id}` |
-| Questions | `GET /api/v1/questions` | `POST /api/v1/questions` | `GET /api/v1/questions/{question_id}` | `PATCH /api/v1/questions/{question_id}` | `DELETE /api/v1/questions/{question_id}` |
-| Question options | `GET /api/v1/question-options` | `POST /api/v1/question-options` | `GET /api/v1/question-options/{option_id}` | `PATCH /api/v1/question-options/{option_id}` | `DELETE /api/v1/question-options/{option_id}` |
-| Attempts | `GET /api/v1/attempts` | `POST /api/v1/attempts` | `GET /api/v1/attempts/{attempt_id}` | `PATCH /api/v1/attempts/{attempt_id}` | `DELETE /api/v1/attempts/{attempt_id}` |
-| User answers | `GET /api/v1/user-answers` | `POST /api/v1/user-answers` | `GET /api/v1/user-answers/{answer_id}` | `PATCH /api/v1/user-answers/{answer_id}` | `DELETE /api/v1/user-answers/{answer_id}` |
-| Flashcards | `GET /api/v1/flashcards` | `POST /api/v1/flashcards` | `GET /api/v1/flashcards/{flashcard_id}` | `PATCH /api/v1/flashcards/{flashcard_id}` | `DELETE /api/v1/flashcards/{flashcard_id}` |
-| Documents | `GET /api/v1/documents` | `POST /api/v1/documents` | `GET /api/v1/documents/{document_id}` | `PATCH /api/v1/documents/{document_id}` | `DELETE /api/v1/documents/{document_id}` |
-| Document chunks | `GET /api/v1/document-chunks` | `POST /api/v1/document-chunks` | `GET /api/v1/document-chunks/{chunk_id}` | `PATCH /api/v1/document-chunks/{chunk_id}` | `DELETE /api/v1/document-chunks/{chunk_id}` |
-| Tags | `GET /api/v1/tags` | `POST /api/v1/tags` | `GET /api/v1/tags/{tag_id}` | `PATCH /api/v1/tags/{tag_id}` | `DELETE /api/v1/tags/{tag_id}` |
-
-## Relaciones REST
-
-Estas rutas modelan relaciones entre agregados:
-
-| Relacion | Crear relacion | Eliminar relacion |
-| --- | --- | --- |
-| Usuario - notebook personal | `POST /api/v1/users/{user_id}/notebooks/{notebook_id}` | `DELETE /api/v1/users/{user_id}/notebooks/{notebook_id}` |
-| Notebook - tag | `POST /api/v1/notebooks/{notebook_id}/tags/{tag_id}` | `DELETE /api/v1/notebooks/{notebook_id}/tags/{tag_id}` |
-| Room - member | `POST /api/v1/rooms/{room_id}/members` | `DELETE /api/v1/rooms/{room_id}/members/{member_id}` |
-| Room - notebook | `POST /api/v1/rooms/{room_id}/notebooks` | `DELETE /api/v1/rooms/{room_id}/notebooks/{notebook_id}` |
-| Exam - question | `POST /api/v1/exams/{exam_id}/questions` | `DELETE /api/v1/exams/{exam_id}/questions/{question_id}` |
-
-Body para `POST /rooms/{room_id}/members`:
+El `PATCH` solo admite los campos editables por el usuario:
 
 ```json
 {
-  "member_id": "00000000-0000-0000-0000-000000000000",
-  "role": "user"
+  "name": "Carlos",
+  "last_name": "González"
 }
 ```
 
-Roles de study rooms:
+El correo, estado, racha, IDs y metadatos de storage no son editables desde este endpoint.
 
-- `admin`: administra la sala y sus notebooks.
-- `user`: miembro regular de la sala.
+### Subir o reemplazar la foto
 
-Body para `POST /rooms/{room_id}/notebooks`:
-
-```json
-{
-  "notebook_id": "00000000-0000-0000-0000-000000000000",
-  "created_by": "00000000-0000-0000-0000-000000000000"
-}
+```http
+POST /api/v1/users/me/profile-photo
+Content-Type: multipart/form-data
 ```
 
-Body para `POST /exams/{exam_id}/questions`:
-
-```json
-{
-  "question_id": "00000000-0000-0000-0000-000000000000",
-  "question_order": 1,
-  "points": 1
-}
-```
-
-## Ejemplos de consumo
-
-Crear usuario:
+- Campo: `file`.
+- Formatos: JPEG, PNG, WebP o GIF.
+- Tamaño máximo: 5 MB.
+- El contenido real del archivo debe coincidir con el MIME declarado.
+- Una nueva foto reemplaza la anterior.
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Carlos",
-    "last_name": "Gonzalez",
-    "email": "carlos@example.com",
-    "hash_password": "hash-seguro",
-    "streak": 0,
-    "status": "active"
-  }'
-```
-
-Actualizar notebook:
-
-```bash
-curl -X PATCH http://127.0.0.1:8000/api/v1/notebooks/00000000-0000-0000-0000-000000000000 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Biologia",
-    "is_favorite": true
-  }'
-```
-
-Crear documento tipo nota:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/documents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "notebook_id": "00000000-0000-0000-0000-000000000000",
-    "name": "Apuntes",
-    "source_type": "note",
-    "content_text": "Contenido del apunte",
-    "content_hash": "hash-del-contenido"
-  }'
-```
-
-## RAG y archivos
-
-Variables requeridas:
-
-- `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY`
-- `OPENROUTER_API_KEY`
-
-Variables opcionales:
-
-- `OPENROUTER_CHAT_MODEL`: default `openai/gpt-5.2`
-- `OPENROUTER_EMBEDDING_MODEL`: default `openai/text-embedding-3-small`
-- `DOCUMENTS_BUCKET`: default `documents`
-- `PROFILE_BUCKET`: default `profile`
-- `RAG_MATCH_LIMIT`: default `6`
-
-La migracion `003_rag_storage_multitenant.sql` crea los buckets `documents` y `profile`, agrega metadata de foto en `users`, normaliza roles `user/admin` y crea `match_document_chunks` para pgvector.
-
-### Subir documento a notebook
-
-`POST /api/v1/notebooks/{notebook_id}/documents/upload`
-
-Formato: `multipart/form-data`
-
-Campos:
-
-- `user_id`: UUID del usuario que sube el documento.
-- `file`: archivo `.pdf`, `.txt` o `.md`.
-- `description`: opcional.
-
-Flujo interno:
-
-1. Valida acceso del usuario al notebook.
-2. Sube archivo al bucket `documents`.
-3. Extrae texto.
-4. Divide en chunks.
-5. Genera embeddings con OpenRouter.
-6. Guarda chunks en `document_chunks`.
-7. Marca documento como `completed` o `failed`.
-
-Ejemplo:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/notebooks/00000000-0000-0000-0000-000000000000/documents/upload \
-  -F "user_id=00000000-0000-0000-0000-000000000001" \
-  -F "description=Apuntes de biologia" \
-  -F "file=@./apuntes.md;type=text/markdown"
-```
-
-Respuesta:
-
-```json
-{
-  "data": {
-    "document_id": "00000000-0000-0000-0000-000000000000",
-    "notebook_id": "00000000-0000-0000-0000-000000000000",
-    "name": "apuntes.md",
-    "source_type": "markdown",
-    "storage_path": "00000000-0000-0000-0000-000000000000/archivo-apuntes.md",
-    "processing_status": "completed",
-    "mime_type": "text/markdown",
-    "content_hash": "hash",
-    "size_bytes": 1200,
-    "chunks_count": 3
-  }
-}
-```
-
-### Subir foto de perfil
-
-`POST /api/v1/users/{user_id}/profile-photo`
-
-Formato: `multipart/form-data`
-
-Archivos permitidos: `image/jpeg`, `image/png`, `image/webp`, `image/gif`.
-
-Ejemplo:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/users/00000000-0000-0000-0000-000000000001/profile-photo \
+curl -X POST http://127.0.0.1:8000/api/v1/users/me/profile-photo \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
   -F "file=@./avatar.png;type=image/png"
 ```
 
-Respuesta:
+Respuesta `201`:
 
 ```json
 {
   "data": {
-    "user_id": "00000000-0000-0000-0000-000000000001",
-    "profile_image_path": "00000000-0000-0000-0000-000000000001/profile.png",
-    "profile_image_mime_type": "image/png",
-    "profile_image_size_bytes": 102400
+    "user_id": "b9b031f0-4fd4-4c94-93af-49b9a4561140",
+    "storage_path": "b9b031f0-4fd4-4c94-93af-49b9a4561140/profile.png",
+    "mime_type": "image/png",
+    "size_bytes": 102400,
+    "url": "https://...signed-url...",
+    "expires_in": 3600
   }
 }
 ```
 
-## Conversaciones RAG
+La `url` es firmada y temporal. No la persistas como URL permanente; solicita otra cuando expire.
 
-Cada notebook puede tener varias conversaciones. Cada mensaje del usuario busca contexto en los documentos vectorizados de ese notebook y el LLM responde con base en esos chunks.
+### Consultar o eliminar la foto
 
-Crear conversacion:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/notebooks/00000000-0000-0000-0000-000000000000/conversations \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "00000000-0000-0000-0000-000000000001",
-    "name": "Dudas de biologia"
-  }'
+```http
+GET /api/v1/users/me/profile-photo
+DELETE /api/v1/users/me/profile-photo
 ```
 
-Listar conversaciones de notebook:
+El `GET` genera una URL firmada nueva. Si no existe foto devuelve `404`. El `DELETE` responde:
 
-```bash
-curl "http://127.0.0.1:8000/api/v1/notebooks/00000000-0000-0000-0000-000000000000/conversations?user_id=00000000-0000-0000-0000-000000000001&limit=20&offset=0"
+```json
+{
+  "deleted": true
+}
 ```
 
-Enviar mensaje al LLM:
+## Creación segura de cuadernos y salas
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/conversations/00000000-0000-0000-0000-000000000000/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "00000000-0000-0000-0000-000000000001",
-    "content": "Explica la fotosintesis con base en mis apuntes"
-  }'
+### Crear un cuaderno personal
+
+```http
+POST /api/v1/notebooks
 ```
 
-Respuesta:
+```json
+{
+  "name": "Estructuras de datos",
+  "description": "Apuntes del semestre",
+  "summary": null,
+  "is_favorite": false,
+  "due_date": "2026-07-30T23:59:00Z"
+}
+```
+
+Solo `name` es obligatorio. El servidor crea el cuaderno y su vínculo personal en una sola transacción. El propietario proviene del JWT; no se necesita una segunda llamada para asociarlo.
+
+### Crear una sala de estudio
+
+```http
+POST /api/v1/rooms
+```
+
+```json
+{
+  "name": "Algoritmos y cadenas",
+  "description": "Sala del equipo de estudio"
+}
+```
+
+El servidor crea la sala, crea la identidad de `study_member` si hace falta y registra al usuario actual como `admin`, todo atómicamente.
+
+### Asociar un cuaderno a una sala
+
+```http
+POST /api/v1/rooms/{room_id}/notebooks
+```
+
+```json
+{
+  "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203"
+}
+```
+
+Solo un administrador de la sala que pueda administrar el cuaderno puede asociarlo. `created_by` se deriva del JWT y no se acepta en el body.
+
+Los listados de cuadernos y salas usan:
+
+```http
+GET /api/v1/notebooks?limit=20&offset=0
+GET /api/v1/rooms?limit=20&offset=0
+```
+
+RLS limita los resultados a recursos accesibles por el usuario autenticado.
+
+## RAG: fuentes y chat
+
+### Cuotas durables de IA
+
+Las operaciones que consumen proveedores de IA tienen cuotas por usuario, persistidas en PostgreSQL. Se comparten entre instancias del API y no se reinician al desplegar o reiniciar el servidor.
+
+| Operación | Endpoint principal                                    | Por hora móvil | Por día UTC |
+| ---------- | ----------------------------------------------------- | --------------: | -----------: |
+| Chat       | `POST /conversations/{conversation_id}/messages`    |              30 |          200 |
+| Embeddings | `POST /notebooks/{notebook_id}/documents/upload`    |              20 |          100 |
+| Flashcards | `POST /notebooks/{notebook_id}/flashcards/generate` |              10 |           30 |
+| Examen     | `POST /notebooks/{notebook_id}/exams/generate`      |               5 |           15 |
+
+Cuando se alcanza una cuota, el API responde `429`:
+
+```json
+{
+  "detail": "Alcanzaste el límite temporal de operaciones de IA."
+}
+```
+
+Respeta `Retry-After: 3600`, deshabilita temporalmente la acción en UI y evita ciclos de reintento automático. La reserva se hace antes de llamar al proveedor, por lo que una operación aceptada puede contar aunque el proveedor falle después.
+
+### Subir una fuente al cuaderno
+
+```http
+POST /api/v1/notebooks/{notebook_id}/documents/upload
+Content-Type: multipart/form-data
+```
+
+- `file`: PDF, TXT o Markdown; máximo 10 MB.
+- `description`: opcional; máximo 1000 caracteres.
+- PDF: máximo 200 páginas.
+- El procesamiento es síncrono: extracción, chunks, embeddings y persistencia ocurren antes de responder.
+- Si el mismo contenido ya existe en el cuaderno, se devuelve el documento existente.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/notebooks/$NOTEBOOK_ID/documents/upload \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "description=Apuntes de biología" \
+  -F "file=@./apuntes.pdf;type=application/pdf"
+```
+
+Respuesta `201`:
 
 ```json
 {
   "data": {
-    "message_id": "00000000-0000-0000-0000-000000000000",
-    "conversation_id": "00000000-0000-0000-0000-000000000000",
+    "document_id": "98e4612a-1d8d-4e28-b125-0411e45ad30a",
+    "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203",
+    "name": "apuntes.pdf",
+    "source_type": "pdf",
+    "processing_status": "completed",
+    "mime_type": "application/pdf",
+    "size_bytes": 234567,
+    "chunks_count": 12
+  }
+}
+```
+
+Para eliminar el documento y su archivo:
+
+```http
+DELETE /api/v1/notebooks/{notebook_id}/documents/{document_id}
+```
+
+### Conversaciones
+
+Crear una conversación:
+
+```http
+POST /api/v1/notebooks/{notebook_id}/conversations
+```
+
+```json
+{
+  "name": "Dudas de biología"
+}
+```
+
+Listar conversaciones y mensajes:
+
+```http
+GET /api/v1/notebooks/{notebook_id}/conversations?limit=20&offset=0
+GET /api/v1/conversations/{conversation_id}/messages?limit=50&offset=0
+```
+
+Enviar mensaje:
+
+```http
+POST /api/v1/conversations/{conversation_id}/messages
+```
+
+```json
+{
+  "content": "Explica la fotosíntesis con base en mis apuntes"
+}
+```
+
+`content` admite hasta 4000 caracteres. Frontend normalmente debe omitir `model`; el servidor usa el modelo configurado y solo acepta su allowlist.
+
+```json
+{
+  "data": {
+    "message_id": "a8b8ff3d-e339-47bd-ad12-2ba5edb68fe4",
+    "conversation_id": "8e876848-2b11-4eed-8eb6-785d2e919115",
     "role": "assistant",
-    "content": "Respuesta del modelo con citas [1].",
-    "order_message": 2
+    "content": "Respuesta basada en tus fuentes [1].",
+    "order_message": 2,
+    "created_at": "2026-07-13T16:30:00Z"
   },
   "sources": [
     {
-      "chunk_id": "00000000-0000-0000-0000-000000000000",
-      "document_id": "00000000-0000-0000-0000-000000000000",
-      "document_name": "apuntes.md",
+      "chunk_id": "91864c09-d9f0-4936-86b2-a166175f4963",
+      "document_id": "98e4612a-1d8d-4e28-b125-0411e45ad30a",
+      "document_name": "apuntes.pdf",
       "similarity": 0.91,
-      "content": "Fragmento usado como contexto"
+      "content": "Fragmento utilizado como contexto"
     }
   ]
 }
 ```
 
-Listar mensajes:
+No envíes `user_id` en multipart, body ni query params. La conversación pertenece al usuario autenticado y no se expone a otros miembros del cuaderno.
 
-```bash
-curl "http://127.0.0.1:8000/api/v1/conversations/00000000-0000-0000-0000-000000000000/messages?user_id=00000000-0000-0000-0000-000000000001&limit=50&offset=0"
+## Generación de recursos con RAG
+
+El usuario debe poder administrar el cuaderno y este debe tener fuentes procesadas.
+
+### Generar flashcards
+
+```http
+POST /api/v1/notebooks/{notebook_id}/flashcards/generate
 ```
 
-Crear pregunta abierta:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/questions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "open",
-    "statement": "Explica la fotosintesis.",
-    "expected_answer": "Proceso por el cual las plantas convierten luz en energia quimica."
-  }'
+```json
+{
+  "count": 10
+}
 ```
 
-## Reglas de validacion relevantes
+- `count`: `1..20`; default `10`.
+- `model`: opcional y normalmente omitido.
+- La generación y persistencia del lote son atómicas.
 
-- Los ids de ruta y relacion deben ser UUID validos.
-- Los `PATCH` no aceptan payload vacio.
-- Las preguntas abiertas requieren `expected_answer`.
-- Las preguntas `multiple_choice` y `true_false` no aceptan `expected_answer`.
-- Un `user-answer` debe tener `selected_option_id` o `answer_text`, pero no ambos.
-- En documentos tipo `note`, `content_text` es obligatorio.
-- En documentos con origen distinto de `note`, `storage_path` es obligatorio.
-- Upload RAG solo acepta `pdf`, `txt` y `md`.
-- Chat RAG requiere que el usuario tenga acceso al notebook de la conversacion.
-- Fotos de perfil solo aceptan `jpeg`, `png`, `webp` y `gif`.
-- `limit`, `offset`, ordenes, puntajes y tiempos respetan limites definidos en Pydantic.
+```json
+{
+  "data": [
+    {
+      "flashcard_id": "da702bbc-5a00-4a89-beb3-21d33a03820a",
+      "question_id": "0bc04f49-a08f-47fb-a9a6-fcf86ebfa8a1",
+      "question": "¿Qué es la fotosíntesis?",
+      "answer": "El proceso que convierte energía lumínica en energía química."
+    }
+  ],
+  "sources": []
+}
+```
 
-Para el detalle exacto de campos por recurso, usar `/docs` o revisar los contratos en `app/domain/schemas/entities.py` y `app/domain/schemas/resources/`.
+### Generar un examen
+
+```http
+POST /api/v1/notebooks/{notebook_id}/exams/generate
+```
+
+```json
+{
+  "name": "Evaluación de fotosíntesis",
+  "description": "Repaso de la unidad 1",
+  "true_false_count": 3,
+  "multiple_choice_count": 4,
+  "open_count": 3
+}
+```
+
+- Cada contador admite `0..10`.
+- La suma debe estar entre `1` y `20`.
+- Defaults: `3` verdadero/falso, `4` opción múltiple y `3` abiertas.
+- `name`, `description` y `model` son opcionales.
+- La creación del examen, preguntas, opciones y relaciones es atómica.
+
+La respuesta incluye IDs, enunciados y opciones, pero nunca `expected_answer`, `is_correct` ni el índice de respuesta correcta:
+
+```json
+{
+  "data": {
+    "exam_id": "a2f18c70-fb56-4fc7-8871-ea28ee2fa0d1",
+    "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203",
+    "name": "Evaluación de fotosíntesis",
+    "description": "Repaso de la unidad 1",
+    "status": "active",
+    "questions": [
+      {
+        "question_id": "a6f42adf-063c-4151-b2bc-9d23b3b254ca",
+        "type": "multiple_choice",
+        "statement": "¿Cuál es el producto energético principal?",
+        "question_order": 1,
+        "options": [
+          {
+            "option_id": "97db39b8-809f-49e3-aae6-d42cd836ee89",
+            "option_text": "Glucosa",
+            "option_order": 1
+          }
+        ]
+      }
+    ]
+  },
+  "sources": []
+}
+```
+
+## Intentos y calificación de exámenes
+
+El flujo público es `iniciar → consultar/recuperar → responder → finalizar`. Solo puede existir un intento `in_progress` por usuario y examen.
+
+### 1. Iniciar
+
+```http
+POST /api/v1/exams/{exam_id}/attempts
+```
+
+Body requerido:
+
+```json
+{}
+```
+
+Respuesta `201`:
+
+```json
+{
+  "data": {
+    "attempt_id": "6b395c9e-9d10-4f01-987f-a059986d338f",
+    "exam_id": "a2f18c70-fb56-4fc7-8871-ea28ee2fa0d1",
+    "status": "in_progress",
+    "started_at": "2026-07-13T16:40:00Z",
+    "questions": [
+      {
+        "question_id": "a6f42adf-063c-4151-b2bc-9d23b3b254ca",
+        "type": "multiple_choice",
+        "statement": "¿Cuál es el producto energético principal?",
+        "question_order": 1,
+        "points": 1,
+        "options": [
+          {
+            "option_id": "97db39b8-809f-49e3-aae6-d42cd836ee89",
+            "option_text": "Glucosa",
+            "option_order": 1
+          }
+        ]
+      }
+    ],
+    "answers": []
+  }
+}
+```
+
+Si ya hay un intento activo devuelve `409`; recupera su ID desde el estado conservado por frontend y usa el siguiente endpoint.
+
+### 2. Consultar o recuperar la sesión
+
+```http
+GET /api/v1/attempts/{attempt_id}
+```
+
+Devuelve el mismo contrato de sesión, incluyendo las respuestas guardadas, sin claves de corrección.
+
+### 3. Crear o reemplazar una respuesta
+
+```http
+PUT /api/v1/attempts/{attempt_id}/answers/{question_id}
+```
+
+Para opción múltiple o verdadero/falso:
+
+```json
+{
+  "selected_option_id": "97db39b8-809f-49e3-aae6-d42cd836ee89"
+}
+```
+
+Para pregunta abierta:
+
+```json
+{
+  "answer_text": "Las plantas convierten la luz en energía química."
+}
+```
+
+Envía exactamente uno de los dos campos. Un segundo `PUT` sobre la misma pregunta reemplaza la respuesta mientras el intento siga activo. La respuesta guardada no incluye todavía `is_correct` ni puntos.
+
+### 4. Finalizar y calificar
+
+```http
+POST /api/v1/attempts/{attempt_id}/finish
+```
+
+Body requerido:
+
+```json
+{}
+```
+
+```json
+{
+  "data": {
+    "attempt_id": "6b395c9e-9d10-4f01-987f-a059986d338f",
+    "exam_id": "a2f18c70-fb56-4fc7-8871-ea28ee2fa0d1",
+    "status": "completed",
+    "score": 80,
+    "earned_points": 8,
+    "total_points": 10,
+    "answered_questions": 10,
+    "total_questions": 10,
+    "completed_at": "2026-07-13T16:55:00Z",
+    "spent_time": 900
+  }
+}
+```
+
+El servidor calcula tiempo, aciertos, puntos y porcentaje. Las preguntas cerradas se comparan contra su opción interna; las abiertas usan verificación semántica y, si el proveedor no está disponible, una comparación determinista segura. Un intento finalizado no acepta más respuestas ni una segunda finalización.
+
+## Estadísticas de usuario
+
+### Obtener el dashboard
+
+```http
+GET /api/v1/users/me/statistics?period=week&timezone=America%2FCancun
+```
+
+Query params:
+
+- `period`: `week` (default), `month` o `all`. `all` genera la serie diaria de los últimos 365 días.
+- `timezone`: zona IANA; default `UTC`. Controla agrupación diaria y racha.
+
+`period` afecta la serie `learning`; los totales, dominio, próximos vencimientos, racha, distribución de tiempo y actividad reciente se calculan con los datos accesibles del usuario.
+
+```json
+{
+  "data": {
+    "overview": {
+      "average_score": 82.5,
+      "completed_exams": 6,
+      "total_exams": 8,
+      "notebooks_dominated": 2,
+      "total_notebooks": 4,
+      "total_study_seconds": 25200
+    },
+    "reinforcement": [
+      {
+        "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203",
+        "name": "Estructuras de datos",
+        "mastery_percent": 65,
+        "flashcards_count": 32,
+        "exams_count": 4
+      }
+    ],
+    "learning": [
+      {
+        "date": "2026-07-13",
+        "exams_completed": 1,
+        "flashcards_reviewed": 24,
+        "study_minutes": 90
+      }
+    ],
+    "upcoming": [
+      {
+        "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203",
+        "name": "Estructuras de datos",
+        "due_date": "2026-07-16T23:59:00Z"
+      }
+    ],
+    "streak": {
+      "current_days": 7,
+      "best_days": 15,
+      "days": [
+        {
+          "date": "2026-07-13",
+          "active": true
+        }
+      ]
+    },
+    "time_by_notebook": [
+      {
+        "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203",
+        "name": "Estructuras de datos",
+        "study_seconds": 16200,
+        "percentage": 64.29
+      }
+    ],
+    "recent_activity": [
+      {
+        "activity_type": "flashcard_reviewed",
+        "occurred_at": "2026-07-13T16:20:00Z",
+        "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203",
+        "notebook_name": "Estructuras de datos",
+        "description": "Repasaste 24 flashcards",
+        "quantity": 24,
+        "duration_seconds": 1200
+      }
+    ],
+    "generated_at": "2026-07-13T16:30:00Z"
+  }
+}
+```
+
+Las listas pueden venir vacías. Frontend debe renderizar `0` y estados vacíos sin asumir que habrá actividad.
+
+### Registrar actividad de estudio
+
+```http
+POST /api/v1/users/me/learning-events
+Idempotency-Key: <clave-única>
+```
+
+Usa un UUID nuevo por acción como `Idempotency-Key`. El formato admite de 16 a 128 caracteres: letras, números, `.`, `_`, `:`, `-` y debe iniciar con letra o número.
+
+Sesión de estudio:
+
+```json
+{
+  "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203",
+  "activity_type": "study_session",
+  "quantity": 1,
+  "duration_seconds": 1800
+}
+```
+
+Repaso de flashcards:
+
+```json
+{
+  "notebook_id": "ccf100d6-b95a-479f-9e6a-bdff8c8fb203",
+  "activity_type": "flashcard_reviewed",
+  "quantity": 24,
+  "duration_seconds": 1200
+}
+```
+
+Reglas:
+
+- `study_session`: `quantity=1`, duración entre 30 y 14 400 segundos.
+- `flashcard_reviewed`: `quantity=1..50`, duración entre 0 y 3600 segundos.
+- El usuario debe tener acceso al cuaderno.
+- Repetir la misma clave con el mismo payload devuelve el evento original, sin duplicar estadísticas.
+- Reutilizarla con otro payload devuelve `409`.
+- Ante `429`, conserva la misma clave para el reintento y respeta `Retry-After`.
+
+## Endpoints retirados o restringidos
+
+Frontend no debe consumir los contratos antiguos siguientes:
+
+| Contrato antiguo                                                 | Reemplazo                                                           |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `POST /users`, `DELETE /users/{user_id}`                     | Supabase Auth administra el ciclo de vida de la cuenta              |
+| `PATCH /users/{user_id}`                                       | `PATCH /users/me`                                                 |
+| `POST /users/{user_id}/profile-photo`                          | `POST /users/me/profile-photo`                                    |
+| Relaciones manuales`/users/{user_id}/notebooks/...`            | `POST /notebooks` crea propiedad atómicamente                    |
+| `POST /exams`, `POST /questions`, `POST /question-options` | `POST /notebooks/{notebook_id}/exams/generate`                    |
+| CRUD genérico`/attempts`                                      | Flujo`/exams/{exam_id}/attempts` y `/attempts/{attempt_id}/...` |
+| CRUD`/user-answers`                                            | `PUT /attempts/{attempt_id}/answers/{question_id}`                |
+| `POST /flashcards`                                             | `POST /notebooks/{notebook_id}/flashcards/generate`               |
+| `POST /documents` y escritura de `/document-chunks`          | Upload RAG del notebook                                             |
+
+`GET /users` y `GET /users/{user_id}` permanecen solo como compatibilidad y nunca enumeran perfiles ajenos. Para el producto usa siempre `GET /users/me`.
+
+Para campos menos comunes y respuestas completas, la referencia canónica es `/docs` y los contratos de `app/domain/schemas/resources/`.

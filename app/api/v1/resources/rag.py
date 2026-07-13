@@ -19,6 +19,7 @@ from app.domain.schemas.resources.rag import (
     FlashcardGenerationResponse,
     MessageListResponse,
 )
+from app.domain.schemas.resources.documents import DocumentResponse
 from app.domain.schemas.resources.users import UserRead
 
 router = APIRouter(tags=["rag"])
@@ -42,6 +43,24 @@ async def upload_notebook_document(
         user_id=_actor_id(current_user),
         file=file,
         description=description,
+    )
+
+
+@router.delete(
+    "/notebooks/{notebook_id}/documents/{document_id}",
+    response_model=DocumentResponse,
+    tags=["documents"],
+)
+async def delete_notebook_document(
+    notebook_id: UUID,
+    document_id: UUID,
+    current_user: Annotated[UserRead, Depends(get_current_user)],
+    use_case: Annotated[RagUseCase, Depends(get_rag_use_case)],
+) -> DocumentResponse:
+    return await use_case.delete_document(
+        notebook_id=notebook_id,
+        document_id=document_id,
+        user_id=_actor_id(current_user),
     )
 
 

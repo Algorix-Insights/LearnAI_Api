@@ -24,7 +24,8 @@ class RoomRepository(BaseSupabaseRepository):
 
     async def create(self, request: RoomRepositoryCreateRequest) -> dict:
         payload = request.payload.model_dump(exclude_unset=True, mode="json")
-        return await self._create(self.table_name, payload)
+        params = {f"p_{key}": value for key, value in payload.items()}
+        return await self._rpc_first("create_study_room", params, "crear")
 
     async def update(self, request: RoomRepositoryUpdateRequest) -> dict | None:
         payload = request.payload.model_dump(exclude_unset=True, mode="json")
@@ -49,7 +50,14 @@ class RoomNotebookRepository(BaseSupabaseRepository):
     table_name = "room_notebooks"
 
     async def create(self, request: RoomNotebookRepositoryCreateRequest) -> dict:
-        return await self._create(self.table_name, request.model_dump(mode="json"))
+        return await self._rpc_first(
+            "attach_room_notebook",
+            {
+                "p_room_id": str(request.room_id),
+                "p_notebook_id": str(request.notebook_id),
+            },
+            "asociar",
+        )
 
     async def delete(self, request: RoomNotebookRepositoryDeleteRequest) -> dict | None:
         return await self._delete_by_filter(self.table_name, request.model_dump(mode="json"))

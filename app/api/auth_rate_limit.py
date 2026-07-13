@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -10,7 +11,10 @@ from time import monotonic
 
 from fastapi import Request
 
-from app.core.exceptions import AuthRateLimitError
+from app.core.exceptions import ApiError, AuthRateLimitError
+
+
+MAX_AUTH_REQUEST_BYTES = 16_384
 
 
 @dataclass(frozen=True)
@@ -91,11 +95,13 @@ _AUTH_RATE_LIMITER = InMemoryRateLimiter()
 
 
 async def _account_digest(request: Request) -> str | None:
-    content_length = request.headers.get("content-length")
-    if content_length and content_length.isdigit() and int(content_length) > 16_384:
-        return None
+    raw_body = await request.body()
+    if len(raw_body) > MAX_AUTH_REQUEST_BYTES:
+        # Never fall back to IP-only throttling for a valid, padded account
+        # request: that would let an attacker bypass the per-email bucket.
+        raise ApiError(413, "El cuerpo de autenticación excede el límite permitido.")
     try:
-        body = await request.json()
+        body = json.loads(raw_body)
     except (UnicodeDecodeError, ValueError):
         return None
     if not isinstance(body, dict):
@@ -141,7 +147,7 @@ limit_login = auth_rate_limit(
     AuthRateLimitPolicy("login", 20, 60, account_limit=8, account_window_seconds=300)
 )
 limit_send_otp = auth_rate_limit(
-    AuthRateLimitPolicy("otp", 10, 60, account_limit=2, account_window_seconds=60)
+    AuthRateLimitPolicy("otp", 10, 60, account_limit=1, account_window_seconds=60)
 )
 limit_verify_otp = auth_rate_limit(
     AuthRateLimitPolicy("verify-otp", 30, 60, account_limit=10, account_window_seconds=300)

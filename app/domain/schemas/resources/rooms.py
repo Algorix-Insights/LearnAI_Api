@@ -107,7 +107,6 @@ class RoomMemberResponse(RoomSchema):
 
 class AddRoomNotebookRequest(RoomSchema):
     notebook_id: UUID
-    created_by: UUID
 
 
 class RoomNotebookPath(RoomSchema):
@@ -118,7 +117,6 @@ class RoomNotebookPath(RoomSchema):
 class RoomNotebookRepositoryCreateRequest(RoomSchema):
     room_id: UUID
     notebook_id: UUID
-    created_by: UUID
 
 
 class RoomNotebookRepositoryDeleteRequest(RoomNotebookPath):

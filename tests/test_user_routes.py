@@ -12,6 +12,7 @@ from app.api.dependencies import (
 )
 from app.domain.schemas.resources.user_profile import ProfilePhotoResponse
 from app.domain.schemas.resources.user_statistics import (
+    LearningEventResponse,
     StatisticsOverview,
     StreakStatistics,
     UserStatisticsData,
@@ -45,6 +46,7 @@ class FakeProfileUseCase:
 class FakeStatisticsUseCase:
     def __init__(self) -> None:
         self.actor: UUID | None = None
+        self.idempotency_key: str | None = None
 
     async def get(self, user_id, request):
         self.actor = user_id
@@ -54,6 +56,21 @@ class FakeStatisticsUseCase:
                 streak=StreakStatistics(),
                 generated_at=datetime.now(UTC),
             )
+        )
+
+    async def record(self, user_id, payload, idempotency_key):
+        self.actor = user_id
+        self.idempotency_key = idempotency_key
+        return LearningEventResponse(
+            data={
+                "event_id": "00000000-0000-0000-0000-000000000060",
+                "user_id": user_id,
+                "notebook_id": payload.notebook_id,
+                "activity_type": payload.activity_type,
+                "quantity": payload.quantity,
+                "duration_seconds": payload.duration_seconds,
+                "occurred_at": datetime.now(UTC),
+            }
         )
 
 
@@ -87,4 +104,30 @@ def test_user_statistics_route_uses_jwt_actor() -> None:
     assert response.status_code == 200
     assert response.json()["data"]["overview"]["total_notebooks"] == 2
     assert statistics.actor == USER_ID
+    app.dependency_overrides.clear()
+
+
+def test_learning_event_requires_and_forwards_idempotency_key() -> None:
+    statistics = FakeStatisticsUseCase()
+    app.dependency_overrides[get_current_user] = lambda: UserRead(user_id=USER_ID)
+    app.dependency_overrides[get_user_statistics_use_case] = lambda: statistics
+    client = TestClient(app, headers={"Authorization": "Bearer test-token"})
+    payload = {
+        "notebook_id": "00000000-0000-0000-0000-000000000010",
+        "activity_type": "study_session",
+        "quantity": 1,
+        "duration_seconds": 600,
+    }
+
+    missing = client.post("/api/v1/users/me/learning-events", json=payload)
+    response = client.post(
+        "/api/v1/users/me/learning-events",
+        json=payload,
+        headers={"Idempotency-Key": "study-session:0001"},
+    )
+
+    assert missing.status_code == 422
+    assert response.status_code == 201
+    assert statistics.actor == USER_ID
+    assert statistics.idempotency_key == "study-session:0001"
     app.dependency_overrides.clear()

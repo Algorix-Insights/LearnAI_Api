@@ -73,11 +73,7 @@ def test_provider_rate_limit_is_safe_429_with_retry_header() -> None:
     )
 
     with pytest.raises(AuthRateLimitError) as captured:
-        asyncio.run(
-            repository.sign_in_with_otp(
-                AuthOtpRequest(email="user@example.test")
-            )
-        )
+        asyncio.run(repository.sign_in_with_otp(AuthOtpRequest(email="user@example.test")))
 
     error = captured.value
     assert error.status_code == 429

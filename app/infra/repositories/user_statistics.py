@@ -6,7 +6,7 @@ from uuid import UUID
 
 from supabase import Client
 
-from app.core.exceptions import RepositoryError
+from app.core.exceptions import ApiError, BadRequestError, ForbiddenError, RepositoryError
 from app.domain.schemas.resources.user_statistics import LearningEventCreate
 from app.infra.db.supabase import get_supabase_admin_client
 
@@ -19,19 +19,69 @@ class UserStatisticsRepository:
         return await asyncio.to_thread(self._load_snapshot, str(user_id))
 
     async def record_event(
-        self, user_id: UUID, event: LearningEventCreate
+        self,
+        user_id: UUID,
+        event: LearningEventCreate,
+        idempotency_key: str,
     ) -> dict[str, Any]:
-        payload = {
-            "user_id": str(user_id),
-            **event.model_dump(mode="json"),
+        params = {
+            "p_notebook_id": str(event.notebook_id),
+            "p_activity_type": event.activity_type,
+            "p_quantity": event.quantity,
+            "p_duration_seconds": event.duration_seconds,
+            "p_idempotency_key": idempotency_key,
         }
         try:
             response = await asyncio.to_thread(
-                self.client.table("user_learning_events").insert(payload).execute
+                self.client.rpc("record_user_learning_event", params).execute
             )
         except Exception as exc:
-            raise RepositoryError("registrar la actividad") from exc
-        return (response.data or [{}])[0]
+            self._raise_record_error(exc)
+        rows = response.data or []
+        if isinstance(rows, dict):
+            row = rows
+        elif rows:
+            row = rows[0]
+        else:
+            raise RepositoryError("registrar la actividad")
+        return {
+            "event_id": row.get("event_id"),
+            "user_id": row.get("user_id") or str(user_id),
+            "notebook_id": row.get("notebook_id"),
+            "activity_type": row.get("activity_type"),
+            "quantity": row.get("quantity"),
+            "duration_seconds": row.get("duration_seconds"),
+            "occurred_at": row.get("occurred_at"),
+        }
+
+    def _raise_record_error(self, exc: Exception) -> None:
+        message = " ".join(
+            str(value)
+            for value in (getattr(exc, "message", ""), getattr(exc, "code", ""), exc)
+            if value
+        ).casefold()
+        if "learning_event_rate_limit" in message:
+            raise ApiError(
+                429,
+                "Demasiadas actividades registradas. Intenta de nuevo en un minuto.",
+                headers={"Retry-After": "60"},
+            ) from exc
+        if "learning_event_daily_limit" in message:
+            raise ApiError(
+                429,
+                "Alcanzaste el limite diario de actividad registrable.",
+                headers={"Retry-After": "3600"},
+            ) from exc
+        if "idempotency_key_reused" in message:
+            raise ApiError(
+                409,
+                "Idempotency-Key ya fue utilizado con otra solicitud.",
+            ) from exc
+        if "notebook_access_denied" in message:
+            raise ForbiddenError() from exc
+        if "invalid_learning_event" in message or "invalid_idempotency_key" in message:
+            raise BadRequestError("Actividad de aprendizaje invalida.") from exc
+        raise RepositoryError("registrar la actividad") from exc
 
     def _load_snapshot(self, user_id: str) -> dict[str, list[dict[str, Any]]]:
         try:

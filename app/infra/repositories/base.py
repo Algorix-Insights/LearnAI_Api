@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from supabase import Client
@@ -11,43 +12,81 @@ class BaseSupabaseRepository:
     def __init__(self, client: Client | None = None) -> None:
         self.client = client or get_supabase_admin_client()
 
-    async def _list(self, table_name: str, limit: int, offset: int) -> list[dict[str, Any]]:
+    async def _list(
+        self,
+        table_name: str,
+        limit: int,
+        offset: int,
+        *,
+        columns: str = "*",
+    ) -> list[dict[str, Any]]:
         try:
             api_query = get_api_query_params()
             if api_query is not None:
                 limit = api_query.limit
                 offset = api_query.offset
 
-            response = (
-                self.client.table(table_name)
-                .select("*")
-            )
+            response = self.client.table(table_name).select(columns)
             for item_filter in api_query.filters if api_query is not None else ():
                 response = self._apply_filter(response, item_filter)
-            response = response.range(offset, offset + limit - 1).execute()
+            response = await self._execute(response.range(offset, offset + limit - 1))
         except Exception as exc:
             raise RepositoryError("listar") from exc
         return response.data or []
 
-    async def _get(self, table_name: str, id_field: str, item_id: str) -> dict[str, Any] | None:
+    async def _get(
+        self,
+        table_name: str,
+        id_field: str,
+        item_id: str,
+        *,
+        columns: str = "*",
+    ) -> dict[str, Any] | None:
         try:
-            response = (
+            query = (
                 self.client.table(table_name)
-                .select("*")
+                .select(columns)
                 .eq(id_field, item_id)
                 .limit(1)
-                .execute()
             )
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("consultar") from exc
         return self._first(response.data)
 
-    async def _create(self, table_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _create(
+        self,
+        table_name: str,
+        payload: dict[str, Any],
+        *,
+        columns: str = "*",
+    ) -> dict[str, Any]:
         try:
-            response = self.client.table(table_name).insert(payload).execute()
+            query = self.client.table(table_name).insert(payload)
+            if columns != "*":
+                query = query.select(columns)
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("crear") from exc
         return self._first(response.data) or {}
+
+    async def _rpc_first(
+        self,
+        function_name: str,
+        params: dict[str, Any],
+        action: str,
+    ) -> dict[str, Any]:
+        try:
+            response = await self._execute(self.client.rpc(function_name, params))
+        except Exception as exc:
+            raise RepositoryError(action) from exc
+
+        data = response.data
+        if isinstance(data, dict):
+            return data
+        if isinstance(data, list):
+            return self._first(data) or {}
+        return {}
 
     async def _update(
         self,
@@ -55,28 +94,31 @@ class BaseSupabaseRepository:
         id_field: str,
         item_id: str,
         payload: dict[str, Any],
+        *,
+        columns: str = "*",
     ) -> dict[str, Any] | None:
         try:
-            response = (
-                self.client.table(table_name)
-                .update(payload)
-                .eq(id_field, item_id)
-                .execute()
-            )
+            query = self.client.table(table_name).update(payload).eq(id_field, item_id)
+            if columns != "*":
+                query = query.select(columns)
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("actualizar") from exc
         return self._first(response.data)
 
     async def _delete(
-        self, table_name: str, id_field: str, item_id: str
+        self,
+        table_name: str,
+        id_field: str,
+        item_id: str,
+        *,
+        columns: str = "*",
     ) -> dict[str, Any] | None:
         try:
-            response = (
-                self.client.table(table_name)
-                .delete()
-                .eq(id_field, item_id)
-                .execute()
-            )
+            query = self.client.table(table_name).delete().eq(id_field, item_id)
+            if columns != "*":
+                query = query.select(columns)
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("eliminar") from exc
         return self._first(response.data)
@@ -88,7 +130,7 @@ class BaseSupabaseRepository:
             query = self.client.table(table_name).delete()
             for field, value in filters.items():
                 query = query.eq(field, value)
-            response = query.execute()
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("eliminar") from exc
         return self._first(response.data)
@@ -97,6 +139,9 @@ class BaseSupabaseRepository:
         if not data:
             return None
         return data[0]
+
+    async def _execute(self, query: Any) -> Any:
+        return await asyncio.to_thread(query.execute)
 
     def _apply_filter(self, query: Any, item_filter: ApiFilter) -> Any:
         field = item_filter.field

@@ -11,23 +11,44 @@ from app.infra.repositories.base import BaseSupabaseRepository
 class DocumentRepository(BaseSupabaseRepository):
     table_name = "documents"
     id_field = "document_id"
+    safe_columns = (
+        "document_id,notebook_id,name,description,source_type,status,"
+        "processing_status,mime_type,size_bytes,created_at,updated_at"
+    )
 
     async def list(self, request: DocumentRepositoryListRequest) -> list[dict]:
-        return await self._list(self.table_name, request.limit, request.offset)
+        return await self._list(
+            self.table_name,
+            request.limit,
+            request.offset,
+            columns=self.safe_columns,
+        )
 
     async def get(self, request: DocumentRepositoryGetRequest) -> dict | None:
-        return await self._get(self.table_name, self.id_field, str(request.document_id))
+        return await self._get(
+            self.table_name,
+            self.id_field,
+            str(request.document_id),
+            columns=self.safe_columns,
+        )
+
+    async def get_internal(self, request: DocumentRepositoryGetRequest) -> dict | None:
+        return await self._get(
+            self.table_name,
+            self.id_field,
+            str(request.document_id),
+        )
 
     async def get_by_hash(self, *, notebook_id: str, content_hash: str) -> dict | None:
         try:
-            response = (
+            query = (
                 self.client.table(self.table_name)
                 .select("*")
                 .eq("notebook_id", notebook_id)
                 .eq("content_hash", content_hash)
                 .limit(1)
-                .execute()
             )
+            response = await self._execute(query)
         except Exception as exc:
             from app.core.exceptions import RepositoryError
 

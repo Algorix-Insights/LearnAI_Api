@@ -13,13 +13,6 @@ VALUES
     ('profile', 'profile', FALSE)
 ON CONFLICT (id) DO NOTHING;
 
-UPDATE members_rooms
-SET role = 'user'
-WHERE role = 'member';
-
-ALTER TABLE members_rooms
-ALTER COLUMN role SET DEFAULT 'user';
-
 DO $$
 DECLARE
     constraint_name TEXT;
@@ -37,11 +30,20 @@ BEGIN
     END IF;
 END $$;
 
+-- The legacy check only accepts ('member', 'admin'), so it must be removed
+-- before existing rows can be rewritten to the new ('user', 'admin') vocabulary.
+UPDATE members_rooms
+SET role = 'user'
+WHERE role = 'member';
+
+ALTER TABLE members_rooms
+ALTER COLUMN role SET DEFAULT 'user';
+
 ALTER TABLE members_rooms
 ADD CONSTRAINT members_rooms_role_check
 CHECK (role IN ('user', 'admin'));
 
-CREATE OR REPLACE FUNCTION match_document_chunks(
+CREATE OR REPLACE FUNCTION public.match_document_chunks(
     query_embedding VECTOR(1536),
     match_notebook_id UUID,
     match_count INT DEFAULT 6
@@ -59,6 +61,8 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 STABLE
+SECURITY INVOKER
+SET search_path = ''
 AS $$
     SELECT
         dc.chunk_id,
@@ -70,14 +74,21 @@ AS $$
         d.name AS document_name,
         d.storage_path,
         1 - (dc.embedding <=> query_embedding) AS similarity
-    FROM document_chunks dc
-    JOIN documents d ON d.document_id = dc.document_id
+    FROM public.document_chunks dc
+    JOIN public.documents d ON d.document_id = dc.document_id
     WHERE d.notebook_id = match_notebook_id
       AND d.status = 'active'
       AND d.processing_status = 'completed'
     ORDER BY dc.embedding <=> query_embedding
-    LIMIT match_count;
+    LIMIT LEAST(GREATEST(COALESCE(match_count, 6), 1), 50);
 $$;
+
+-- Do not leave the retrieval RPC executable while the later fine-grained RLS
+-- migration is still pending (or if that migration fails).
+REVOKE ALL ON FUNCTION public.match_document_chunks(VECTOR, UUID, INT)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.match_document_chunks(VECTOR, UUID, INT)
+TO service_role;
 
 CREATE INDEX IF NOT EXISTS ai_conversations_notebook_id_updated_at_idx
 ON ai_conversations (notebook_id, updated_at DESC);

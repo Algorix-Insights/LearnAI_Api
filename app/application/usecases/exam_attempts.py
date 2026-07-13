@@ -4,7 +4,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from app.application.interfaces.open_answer_verifier import OpenAnswerVerifier
+from app.application.interfaces.open_answer_verifier import (
+    OpenAnswerVerification,
+    OpenAnswerVerifier,
+)
 from app.core.exceptions import ApiError, BadRequestError, ForbiddenError, ResourceNotFoundError
 from app.domain.interfaces.attempts import ExamAttemptWorkflowRepository
 from app.domain.schemas.resources.attempts import (
@@ -14,11 +17,13 @@ from app.domain.schemas.resources.attempts import (
     AttemptSessionResponse,
     FinishedAttemptRead,
     FinishedAttemptResponse,
+    GradedAttemptAnswerRead,
     SubmitAttemptAnswerRequest,
     SubmittedAttemptAnswerRead,
     SubmittedAttemptAnswerResponse,
 )
 from app.domain.services.exam_attempts import ExamAttemptGrader
+from app.infra.repositories.ai_usage import AiUsageRepository
 
 
 class ExamAttemptWorkflowUseCase:
@@ -27,10 +32,12 @@ class ExamAttemptWorkflowUseCase:
         repository: ExamAttemptWorkflowRepository,
         grader: ExamAttemptGrader | None = None,
         open_answer_verifier: OpenAnswerVerifier | None = None,
+        usage: AiUsageRepository | None = None,
     ) -> None:
         self.repository = repository
         self.grader = grader or ExamAttemptGrader()
         self.open_answer_verifier = open_answer_verifier
+        self.usage = usage
 
     async def start(self, *, exam_id: UUID, user_id: UUID) -> AttemptSessionResponse:
         await self._require_exam(exam_id=exam_id, user_id=user_id)
@@ -42,7 +49,14 @@ class ExamAttemptWorkflowUseCase:
             exam_id=str(exam_id), user_id=str(user_id)
         )
         if active is not None:
-            raise self._conflict("Ya existe un intento activo para este examen.")
+            answers = await self.repository.list_attempt_answers(
+                attempt_id=str(active["attempt_id"])
+            )
+            return self._session_response(
+                attempt=active,
+                questions=questions,
+                answers=answers,
+            )
 
         attempt = await self.repository.create_workflow_attempt(
             exam_id=str(exam_id),
@@ -50,7 +64,13 @@ class ExamAttemptWorkflowUseCase:
             started_at=datetime.now(UTC),
         )
         if attempt is None:
-            raise self._conflict("Ya existe un intento activo para este examen.")
+            # A concurrent start may have won the unique-index race. Returning
+            # that session makes POST start a safe recovery operation.
+            attempt = await self.repository.get_active_attempt(
+                exam_id=str(exam_id), user_id=str(user_id)
+            )
+            if attempt is None:
+                raise self._conflict("No fue posible iniciar el intento.")
         return self._session_response(attempt=attempt, questions=questions, answers=[])
 
     async def get_session(
@@ -112,14 +132,27 @@ class ExamAttemptWorkflowUseCase:
         if not questions:
             raise BadRequestError("El examen no tiene preguntas disponibles.")
         answers = await self.repository.list_attempt_answers(attempt_id=str(attempt_id))
-        open_answer_correctness = await self._verify_open_answers(
+        open_answer_count = self._answered_open_question_count(
+            questions=questions,
+            answers=answers,
+        )
+        if self.open_answer_verifier is not None and self.usage is not None and open_answer_count:
+            await self.usage.reserve(
+                actor_id=str(user_id),
+                operation="exam_grading",
+                units=open_answer_count,
+            )
+        open_verifications = await self._verify_open_answers(
             questions=questions,
             answers=answers,
         )
         grade = self.grader.grade(
             questions=questions,
             answers=answers,
-            open_answer_correctness=open_answer_correctness,
+            open_answer_correctness={
+                question_id: verification.is_correct
+                for question_id, verification in open_verifications.items()
+            },
         )
 
         completed_at = datetime.now(UTC)
@@ -147,6 +180,10 @@ class ExamAttemptWorkflowUseCase:
                 total_questions=grade.total_questions,
                 completed_at=self._as_datetime(finished.get("completed_at") or completed_at),
                 spent_time=int(finished.get("spent_time", spent_time)),
+                answers=self._graded_answers(
+                    grades=grade.grades,
+                    verifications=open_verifications,
+                ),
             )
         )
 
@@ -257,7 +294,7 @@ class ExamAttemptWorkflowUseCase:
         *,
         questions: list[dict[str, Any]],
         answers: list[dict[str, Any]],
-    ) -> dict[str, bool]:
+    ) -> dict[str, OpenAnswerVerification]:
         if self.open_answer_verifier is None:
             return {}
 
@@ -266,7 +303,7 @@ class ExamAttemptWorkflowUseCase:
             for answer in answers
             if answer.get("question_id") is not None
         }
-        results: dict[str, bool] = {}
+        results: dict[str, OpenAnswerVerification] = {}
         for question in questions:
             if question.get("type") != "open":
                 continue
@@ -285,8 +322,48 @@ class ExamAttemptWorkflowUseCase:
             except Exception:
                 # Deterministic normalized equality remains the safe fallback.
                 continue
-            results[question_id] = verification.is_correct
+            results[question_id] = verification
         return results
+
+    def _answered_open_question_count(
+        self,
+        *,
+        questions: list[dict[str, Any]],
+        answers: list[dict[str, Any]],
+    ) -> int:
+        answered = {
+            str(answer.get("question_id"))
+            for answer in answers
+            if isinstance(answer.get("answer_text"), str)
+        }
+        return sum(
+            1
+            for question in questions
+            if question.get("type") == "open"
+            and str(question.get("question_id")) in answered
+        )
+
+    def _graded_answers(
+        self,
+        *,
+        grades: list[dict[str, Any]],
+        verifications: dict[str, OpenAnswerVerification],
+    ) -> list[GradedAttemptAnswerRead]:
+        result: list[GradedAttemptAnswerRead] = []
+        for grade in grades:
+            question_id = str(grade["question_id"])
+            verification = verifications.get(question_id)
+            result.append(
+                GradedAttemptAnswerRead(
+                    answer_id=UUID(str(grade["answer_id"])),
+                    question_id=UUID(question_id),
+                    is_correct=bool(grade["is_correct"]),
+                    points_awarded=float(grade["points_awarded"]),
+                    confidence=verification.confidence if verification else None,
+                    feedback=verification.feedback if verification else None,
+                )
+            )
+        return result
 
     def _safe_answer(self, answer: dict[str, Any]) -> SubmittedAttemptAnswerRead:
         return SubmittedAttemptAnswerRead(
@@ -299,6 +376,12 @@ class ExamAttemptWorkflowUseCase:
                 else None
             ),
             answer_text=answer.get("answer_text"),
+            is_correct=answer.get("is_correct"),
+            points_awarded=(
+                float(answer["points_awarded"])
+                if answer.get("points_awarded") is not None
+                else None
+            ),
             created_at=self._optional_datetime(answer.get("created_at")),
         )
 

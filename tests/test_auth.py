@@ -1,8 +1,8 @@
 from typing import Any
-from uuid import UUID
 
 from fastapi.testclient import TestClient
 
+from app.api.auth_rate_limit import clear_auth_rate_limits
 from app.api.dependencies import get_auth_use_case, get_users_use_case
 from app.application.usecases.auth import AuthUseCase
 from app.application.usecases.users import UserUseCase
@@ -251,7 +251,7 @@ def test_auth_otp_flow() -> None:
     # Enviar OTP / Magic link
     send_response = client.post(
         "/api/v1/auth/otp",
-        json={"email": "ada@example.test", "should_create_user": True},
+        json={"email": "ada@example.test"},
     )
     assert send_response.status_code == 200
     assert "Código OTP" in send_response.json()["data"]["message"]
@@ -338,7 +338,37 @@ def test_auth_register_without_password() -> None:
     body = response.json()
     assert body["data"]["access_token"] == ""
     assert "Registro iniciado" in body["data"]["message"]
-    assert body["data"]["user"]["email"] == "passwordless@example.test"
-    assert body["data"]["user"]["status"] == "pending"
+    assert body["data"]["user"] is None
     app.dependency_overrides.clear()
 
+
+def test_auth_account_limit_cannot_be_bypassed_with_padded_json() -> None:
+    clear_auth_rate_limits()
+    client, _, _ = _setup_client()
+    payload = (
+        '{"email":"ada@example.test","should_create_user":false}'
+        + (" " * 16_384)
+    )
+
+    response = client.post(
+        "/api/v1/auth/otp",
+        content=payload,
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    clear_auth_rate_limits()
+    app.dependency_overrides.clear()
+
+
+def test_suspended_profile_cannot_use_valid_supabase_token() -> None:
+    client, user_repo, _ = _setup_client()
+    user_repo.data["users"][0]["status"] = "suspended"
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": "Bearer valid_token_ada"},
+    )
+
+    assert response.status_code == 403
+    app.dependency_overrides.clear()

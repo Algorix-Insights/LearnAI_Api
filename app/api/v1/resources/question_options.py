@@ -1,12 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_question_options_use_case
 from app.application.usecases import QuestionOptionUseCase
-from app.domain.schemas.entities import QuestionOptionCreate, QuestionOptionUpdate
+from app.domain.schemas.entities import QuestionOptionUpdate
 from app.domain.schemas.resources.question_options import (
-    QuestionOptionCreateRequest,
     QuestionOptionDeleteRequest,
     QuestionOptionListResponse,
     QuestionOptionListRequest,
@@ -24,14 +23,6 @@ async def list_question_options(
     use_case: Annotated[QuestionOptionUseCase, Depends(get_question_options_use_case)],
 ) -> QuestionOptionListResponse:
     return await use_case.list(request)
-
-
-@router.post("", response_model=QuestionOptionResponse, status_code=status.HTTP_201_CREATED)
-async def create_question_option(
-    payload: QuestionOptionCreate,
-    use_case: Annotated[QuestionOptionUseCase, Depends(get_question_options_use_case)],
-) -> QuestionOptionResponse:
-    return await use_case.create(QuestionOptionCreateRequest(payload=payload))
 
 
 @router.get("/{option_id}", response_model=QuestionOptionResponse)

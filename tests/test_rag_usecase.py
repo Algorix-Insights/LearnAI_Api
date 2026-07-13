@@ -72,21 +72,31 @@ class FakeConversations:
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []
 
-    async def create(self, *, notebook_id: str, name: str) -> dict:
+    async def create(self, *, notebook_id: str, user_id: str, name: str) -> dict:
         return {
             "conversation_id": str(CONVERSATION_ID),
             "notebook_id": notebook_id,
+            "created_by_user_id": user_id,
             "name": name,
         }
 
-    async def list_by_notebook(self, *, notebook_id: str, limit: int, offset: int) -> list[dict]:
+    async def list_by_notebook(
+        self, *, notebook_id: str, user_id: str, limit: int, offset: int
+    ) -> list[dict]:
         return []
 
-    async def get(self, *, conversation_id: str) -> dict | None:
-        return {"conversation_id": conversation_id, "notebook_id": str(NOTEBOOK_ID)}
+    async def get(self, *, conversation_id: str, user_id: str) -> dict | None:
+        return {
+            "conversation_id": conversation_id,
+            "notebook_id": str(NOTEBOOK_ID),
+            "created_by_user_id": user_id,
+        }
 
     async def list_messages(self, *, conversation_id: str, limit: int, offset: int) -> list[dict]:
         return self.messages[offset : offset + limit]
+
+    async def list_recent_messages(self, *, conversation_id: str, limit: int) -> list[dict]:
+        return self.messages[-limit:]
 
     async def next_message_order(self, *, conversation_id: str) -> int:
         return len(self.messages) + 1
@@ -97,9 +107,12 @@ class FakeConversations:
         conversation_id: str,
         role: str,
         content: str,
-        order_message: int,
+        actor_id: str,
+        order_message: int | None = None,
         sent_by_user_id: str | None = None,
     ) -> dict:
+        del actor_id
+        order_message = order_message or len(self.messages) + 1
         item = {
             "message_id": f"00000000-0000-0000-0000-00000000006{order_message}",
             "conversation_id": conversation_id,
@@ -128,10 +141,6 @@ class FakeSearch:
 class FakeAccess:
     async def has_notebook_access(self, *, user_id: str, notebook_id: str) -> bool:
         return True
-
-
-class FakeUsers:
-    pass
 
 
 class FakeQuestions:
@@ -261,7 +270,6 @@ def make_use_case(
         flashcards=FakeFlashcards(),
         search=FakeSearch(),
         access=FakeAccess(),
-        users=FakeUsers(),
         storage=storage,
         llm=llm or FakeLlm(),
         settings=Settings(openrouter_api_key="test-key"),
@@ -294,7 +302,8 @@ def test_rag_upload_vectorizes_markdown_document() -> None:
 
 
 def test_rag_chat_uses_retrieved_sources_and_stores_messages() -> None:
-    use_case, _, _, conversations = make_use_case()
+    llm = FakeLlm()
+    use_case, _, _, conversations = make_use_case(llm)
 
     response = run_async(
         use_case.chat(
@@ -307,6 +316,16 @@ def test_rag_chat_uses_retrieved_sources_and_stores_messages() -> None:
     assert response.data.role == "assistant"
     assert response.sources[0].document_name == "notas.md"
     assert [message["role"] for message in conversations.messages] == ["user", "assistant"]
+
+    run_async(
+        use_case.chat(
+            conversation_id=CONVERSATION_ID,
+            user_id=USER_ID,
+            request=ChatRequest(content="¿Y para qué la usa?"),
+        )
+    )
+    second_roles = [message["role"] for message in llm.chat_payloads[1]["messages"]]
+    assert second_roles == ["system", "system", "user", "assistant", "user"]
 
 
 def test_rag_processor_rejects_unsupported_documents() -> None:

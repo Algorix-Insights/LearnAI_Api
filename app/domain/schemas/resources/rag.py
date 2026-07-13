@@ -10,16 +10,14 @@ class RagSchema(BaseModel):
 
 
 class DocumentUploadResult(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="ignore")
 
     document_id: UUID | None = None
     notebook_id: UUID | None = None
     name: str | None = None
     source_type: str | None = None
-    storage_path: str | None = None
     processing_status: str | None = None
     mime_type: str | None = None
-    content_hash: str | None = None
     size_bytes: int | None = None
     chunks_count: int = 0
 
@@ -58,6 +56,7 @@ class ConversationRead(BaseModel):
 
     conversation_id: UUID | None = None
     notebook_id: UUID | None = None
+    created_by_user_id: UUID | None = None
     name: str | None = None
     summary: str | None = None
     spent_time: int | None = None

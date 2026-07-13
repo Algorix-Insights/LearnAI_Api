@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.core.exceptions import BadRequestError, ForbiddenError
+from app.core.exceptions import BadRequestError
 from app.domain.interfaces.user_statistics import UserStatisticsRepository
 from app.domain.schemas.resources.user_statistics import (
     LearningEventCreate,
@@ -26,6 +27,8 @@ from app.domain.schemas.resources.user_statistics import (
 
 
 class UserStatisticsUseCase:
+    _IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$")
+
     def __init__(self, repository: UserStatisticsRepository) -> None:
         self.repository = repository
 
@@ -39,13 +42,16 @@ class UserStatisticsUseCase:
         return UserStatisticsResponse(data=data)
 
     async def record(
-        self, user_id: UUID, event: LearningEventCreate
+        self,
+        user_id: UUID,
+        event: LearningEventCreate,
+        idempotency_key: str,
     ) -> LearningEventResponse:
-        snapshot = await self.repository.load_snapshot(user_id)
-        allowed = {str(item.get("notebook_id")) for item in snapshot.get("notebooks", [])}
-        if str(event.notebook_id) not in allowed:
-            raise ForbiddenError()
-        data = await self.repository.record_event(user_id, event)
+        if not self._IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
+            raise BadRequestError("Idempotency-Key invalido.")
+        # Ownership, quotas and uniqueness are checked atomically in PostgreSQL.
+        # Doing a read here first would leave a time-of-check/time-of-use race.
+        data = await self.repository.record_event(user_id, event, idempotency_key)
         return LearningEventResponse(data=data)
 
     def _build(
@@ -137,8 +143,8 @@ class UserStatisticsUseCase:
         }
         dominated = sum(
             1
-            for notebook_id, notebook in notebook_by_id.items()
-            if mastery.get(notebook_id, 0) >= 80 or notebook.get("is_dominated") is True
+            for notebook_id in notebook_by_id
+            if mastery.get(notebook_id, 0) >= 80
         )
         reinforcement = sorted(
             [
@@ -151,7 +157,6 @@ class UserStatisticsUseCase:
                 )
                 for notebook_id, notebook in notebook_by_id.items()
                 if mastery.get(notebook_id, 0) < 70
-                and notebook.get("is_dominated") is not True
             ],
             key=lambda item: (item.mastery_percent, item.name),
         )[:5]

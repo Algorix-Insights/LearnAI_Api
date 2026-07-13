@@ -4,6 +4,7 @@ import asyncio
 from copy import deepcopy
 from datetime import UTC, datetime
 from decimal import Decimal, ROUND_HALF_UP
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -21,6 +22,7 @@ from app.application.usecases.exam_attempts import ExamAttemptWorkflowUseCase
 from app.core.exceptions import ApiError, BadRequestError, ResourceNotFoundError, UnauthorizedError
 from app.domain.schemas.resources.attempts import SubmitAttemptAnswerRequest
 from app.domain.schemas.resources.users import UserRead
+from app.infra.repositories.attempts import AttemptRepository
 
 USER_A = UUID("00000000-0000-0000-0000-000000000001")
 USER_B = UUID("00000000-0000-0000-0000-000000000002")
@@ -244,6 +246,32 @@ class FailingOpenAnswerVerifier:
     ) -> OpenAnswerVerification:
         self.calls += 1
         raise RuntimeError("provider unavailable")
+
+
+class CapturingRpcClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def rpc(self, function_name: str, params: dict[str, Any]) -> Any:
+        self.calls.append((function_name, params))
+        if function_name == "submit_exam_attempt_answer":
+            data = [
+                {
+                    "answer_id": str(UUID(int=100)),
+                    "attempt_id": params["p_attempt_id"],
+                    "question_id": params["p_question_id"],
+                }
+            ]
+        else:
+            data = [
+                {
+                    "attempt_id": params["p_attempt_id"],
+                    "exam_id": str(EXAM_ID),
+                    "status": "completed",
+                    "score": "100.00",
+                }
+            ]
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=data))
 
 
 def test_start_is_safe_and_rejects_second_active_attempt() -> None:
@@ -537,6 +565,39 @@ async def _verifier_failure_uses_deterministic_normalized_fallback() -> None:
 
     assert verifier.calls == 1
     assert finished.data.score == 60.0
+
+
+def test_repository_rpc_payload_never_accepts_client_grading_values() -> None:
+    asyncio.run(_repository_rpc_payload_never_accepts_client_grading_values())
+
+
+async def _repository_rpc_payload_never_accepts_client_grading_values() -> None:
+    client = CapturingRpcClient()
+    repository = AttemptRepository(client)  # type: ignore[arg-type]
+
+    await repository.submit_workflow_answer(
+        attempt_id=str(ATTEMPT_ID),
+        user_id=str(USER_A),
+        question_id=str(QUESTION_CHOICE),
+        selected_option_id=str(OPTION_CORRECT),
+        answer_text=None,
+    )
+    submit_name, submit_payload = client.calls[0]
+    assert submit_name == "submit_exam_attempt_answer"
+    assert "is_correct" not in submit_payload
+    assert "points_awarded" not in submit_payload
+    assert "score" not in submit_payload
+
+    await repository.finalize_workflow_attempt(
+        attempt_id=str(ATTEMPT_ID),
+        user_id=str(USER_A),
+        completed_at=datetime.now(UTC),
+        spent_time=10,
+        grades=[],
+    )
+    finish_name, finish_payload = client.calls[1]
+    assert finish_name == "finalize_exam_attempt"
+    assert "p_score" not in finish_payload
 
 
 def test_http_workflow_requires_auth_and_rejects_grade_tampering() -> None:

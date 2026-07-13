@@ -1,16 +1,15 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, UploadFile, status
 
 from app.api.dependencies import (
     get_current_user,
-    get_personal_notebooks_use_case,
     get_user_profile_use_case,
     get_user_statistics_use_case,
     get_users_use_case,
 )
-from app.application.usecases import PersonalNotebookUseCase, UserUseCase
+from app.application.usecases import UserUseCase
 from app.application.usecases.user_profile import UserProfileUseCase
 from app.application.usecases.user_statistics import UserStatisticsUseCase
 from app.core.exceptions import UnauthorizedError
@@ -27,8 +26,6 @@ from app.domain.schemas.resources.user_statistics import (
     UserStatisticsResponse,
 )
 from app.domain.schemas.resources.users import (
-    PersonalNotebookPath,
-    PersonalNotebookResponse,
     UserListResponse,
     UserListRequest,
     UserPath,
@@ -109,47 +106,21 @@ async def get_my_statistics(
 )
 async def record_my_learning_event(
     payload: LearningEventCreate,
+    idempotency_key: Annotated[
+        str,
+        Header(
+            alias="Idempotency-Key",
+            min_length=16,
+            max_length=128,
+            pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$",
+        ),
+    ],
     current_user: Annotated[UserRead, Depends(get_current_user)],
     use_case: Annotated[
         UserStatisticsUseCase, Depends(get_user_statistics_use_case)
     ],
 ) -> LearningEventResponse:
-    return await use_case.record(_actor_id(current_user), payload)
-
-
-@router.post(
-    "/me/notebooks/{notebook_id}",
-    response_model=PersonalNotebookResponse,
-    status_code=status.HTTP_201_CREATED,
-    tags=["personal-notebooks"],
-)
-async def add_my_personal_notebook(
-    notebook_id: UUID,
-    current_user: Annotated[UserRead, Depends(get_current_user)],
-    use_case: Annotated[
-        PersonalNotebookUseCase, Depends(get_personal_notebooks_use_case)
-    ],
-) -> PersonalNotebookResponse:
-    return await use_case.add(
-        PersonalNotebookPath(user_id=_actor_id(current_user), notebook_id=notebook_id)
-    )
-
-
-@router.delete(
-    "/me/notebooks/{notebook_id}",
-    response_model=PersonalNotebookResponse,
-    tags=["personal-notebooks"],
-)
-async def remove_my_personal_notebook(
-    notebook_id: UUID,
-    current_user: Annotated[UserRead, Depends(get_current_user)],
-    use_case: Annotated[
-        PersonalNotebookUseCase, Depends(get_personal_notebooks_use_case)
-    ],
-) -> PersonalNotebookResponse:
-    return await use_case.remove(
-        PersonalNotebookPath(user_id=_actor_id(current_user), notebook_id=notebook_id)
-    )
+    return await use_case.record(_actor_id(current_user), payload, idempotency_key)
 
 
 # Compatibility reads remain self-only. User creation/deletion and arbitrary profile

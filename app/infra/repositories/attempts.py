@@ -35,90 +35,90 @@ class AttemptRepository(BaseSupabaseRepository):
 
     async def get_exam(self, *, exam_id: str) -> dict[str, Any] | None:
         try:
-            response = (
+            query = (
                 self.client.table("exams")
                 .select("exam_id,notebook_id,status")
                 .eq("exam_id", exam_id)
                 .limit(1)
-                .execute()
             )
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("consultar el examen") from exc
         return self._first(response.data)
 
     async def has_notebook_access(self, *, notebook_id: str, user_id: str) -> bool:
         try:
-            personal = (
+            personal_query = (
                 self.client.table("personal_notebooks")
                 .select("notebook_id")
                 .eq("notebook_id", notebook_id)
                 .eq("user_id", user_id)
                 .limit(1)
-                .execute()
             )
+            personal = await self._execute(personal_query)
             if personal.data:
                 return True
 
-            member = (
+            member_query = (
                 self.client.table("study_members")
                 .select("member_id")
                 .eq("user_id", user_id)
                 .limit(1)
-                .execute()
             )
+            member = await self._execute(member_query)
             member_row = self._first(member.data)
             if member_row is None:
                 return False
 
-            rooms = (
+            rooms_query = (
                 self.client.table("room_notebooks")
                 .select("room_id")
                 .eq("notebook_id", notebook_id)
-                .execute()
             )
+            rooms = await self._execute(rooms_query)
             room_ids = [row["room_id"] for row in rooms.data or []]
             if not room_ids:
                 return False
 
-            membership = (
+            membership_query = (
                 self.client.table("members_rooms")
                 .select("room_id")
                 .eq("member_id", member_row["member_id"])
                 .in_("room_id", room_ids)
                 .limit(1)
-                .execute()
             )
+            membership = await self._execute(membership_query)
         except Exception as exc:
             raise RepositoryError("validar acceso al examen") from exc
         return bool(membership.data)
 
     async def list_exam_questions(self, *, exam_id: str) -> list[dict[str, Any]]:
         try:
-            links_response = (
+            links_query = (
                 self.client.table("exam_questions")
                 .select("question_id,question_order,points")
                 .eq("exam_id", exam_id)
                 .order("question_order")
-                .execute()
             )
+            links_response = await self._execute(links_query)
             links = links_response.data or []
             if not links:
                 return []
 
             question_ids = [row["question_id"] for row in links]
-            questions_response = (
+            questions_query = (
                 self.client.table("questions")
                 .select("question_id,type,statement,expected_answer")
                 .in_("question_id", question_ids)
-                .execute()
             )
-            options_response = (
+            questions_response = await self._execute(questions_query)
+            options_query = (
                 self.client.table("questions_options")
                 .select("option_id,question_id,option_text,is_correct,option_order")
                 .in_("question_id", question_ids)
                 .order("option_order")
-                .execute()
             )
+            options_response = await self._execute(options_query)
         except Exception as exc:
             raise RepositoryError("listar preguntas del examen") from exc
 
@@ -149,7 +149,7 @@ class AttemptRepository(BaseSupabaseRepository):
         self, *, exam_id: str, user_id: str
     ) -> dict[str, Any] | None:
         try:
-            response = (
+            query = (
                 self.client.table(self.table_name)
                 .select("*")
                 .eq("exam_id", exam_id)
@@ -157,8 +157,8 @@ class AttemptRepository(BaseSupabaseRepository):
                 .eq("status", "in_progress")
                 .order("started_at", desc=True)
                 .limit(1)
-                .execute()
             )
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("consultar el intento activo") from exc
         return self._first(response.data)
@@ -167,7 +167,7 @@ class AttemptRepository(BaseSupabaseRepository):
         self, *, exam_id: str, user_id: str, started_at: datetime
     ) -> dict[str, Any] | None:
         try:
-            response = (
+            query = (
                 self.client.table(self.table_name)
                 .insert(
                     {
@@ -179,8 +179,8 @@ class AttemptRepository(BaseSupabaseRepository):
                         "spent_time": 0,
                     }
                 )
-                .execute()
             )
+            response = await self._execute(query)
         except Exception as exc:
             if self._is_unique_violation(exc):
                 return None
@@ -191,27 +191,27 @@ class AttemptRepository(BaseSupabaseRepository):
         self, *, attempt_id: str, user_id: str
     ) -> dict[str, Any] | None:
         try:
-            response = (
+            query = (
                 self.client.table(self.table_name)
                 .select("*")
                 .eq("attempt_id", attempt_id)
                 .eq("user_id", user_id)
                 .limit(1)
-                .execute()
             )
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("consultar el intento") from exc
         return self._first(response.data)
 
     async def list_attempt_answers(self, *, attempt_id: str) -> list[dict[str, Any]]:
         try:
-            response = (
+            query = (
                 self.client.table("user_answers")
                 .select("*")
                 .eq("attempt_id", attempt_id)
                 .order("created_at")
-                .execute()
             )
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("listar respuestas del intento") from exc
         return response.data or []
@@ -226,7 +226,7 @@ class AttemptRepository(BaseSupabaseRepository):
         answer_text: str | None,
     ) -> dict[str, Any] | None:
         try:
-            response = self.client.rpc(
+            query = self.client.rpc(
                 "submit_exam_attempt_answer",
                 {
                     "p_attempt_id": attempt_id,
@@ -235,7 +235,8 @@ class AttemptRepository(BaseSupabaseRepository):
                     "p_selected_option_id": selected_option_id,
                     "p_answer_text": answer_text,
                 },
-            ).execute()
+            )
+            response = await self._execute(query)
         except Exception as exc:
             raise RepositoryError("guardar la respuesta") from exc
         return self._first(response.data)
@@ -250,7 +251,7 @@ class AttemptRepository(BaseSupabaseRepository):
         grades: list[dict[str, Any]],
     ) -> dict[str, Any] | None:
         try:
-            response = self.client.rpc(
+            query = self.client.rpc(
                 "finalize_exam_attempt",
                 {
                     "p_attempt_id": attempt_id,
@@ -259,8 +260,11 @@ class AttemptRepository(BaseSupabaseRepository):
                     "p_spent_time": spent_time,
                     "p_grades": grades,
                 },
-            ).execute()
+            )
+            response = await self._execute(query)
         except Exception as exc:
+            if "attempt_answers_changed" in str(exc).casefold():
+                return None
             raise RepositoryError("finalizar el intento") from exc
         return self._first(response.data)
 

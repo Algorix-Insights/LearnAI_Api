@@ -9,8 +9,8 @@ class AuthRegisterRequest(BaseModel):
 
     email: str = Field(min_length=3, max_length=320)
     password: str | None = Field(default=None, min_length=8, max_length=256)
-    name: str
-    last_name: str
+    name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
     captcha_token: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
@@ -26,7 +26,8 @@ class AuthOtpRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: str = Field(min_length=3, max_length=320)
-    should_create_user: bool = False
+    # Account creation belongs to /auth/register, which also captures profile data.
+    should_create_user: Literal[False] = False
     captcha_token: str | None = Field(default=None, min_length=1, max_length=4096)
 
 

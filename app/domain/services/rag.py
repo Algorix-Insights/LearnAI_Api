@@ -109,7 +109,7 @@ class ProfileImageProcessor:
         return content, detected_type
 
     def storage_path(self, user_id: UUID, content_type: str) -> str:
-        return f"{user_id}/profile{self.extensions[content_type]}"
+        return f"{user_id}/profile-{uuid4()}{self.extensions[content_type]}"
 
     def _detect_mime_type(self, content: bytes) -> str | None:
         if content.startswith(b"\xff\xd8\xff"):

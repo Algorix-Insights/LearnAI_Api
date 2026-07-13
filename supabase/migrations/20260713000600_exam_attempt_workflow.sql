@@ -19,25 +19,6 @@ BEGIN
     END IF;
 END $$;
 
--- Hiding fields in FastAPI is insufficient: authenticated users can also call the
--- Supabase Data API. Remove table-level SELECT before granting only safe columns.
-REVOKE SELECT ON public.questions FROM anon, authenticated;
-REVOKE SELECT ON public.questions_options FROM anon, authenticated;
-REVOKE SELECT ON public.user_answers FROM anon, authenticated;
-GRANT SELECT (question_id, type, statement, created_at)
-ON public.questions TO authenticated;
-GRANT SELECT (option_id, question_id, option_text, option_order, created_at)
-ON public.questions_options TO authenticated;
-GRANT SELECT (
-    answer_id,
-    attempt_id,
-    question_id,
-    selected_option_id,
-    answer_text,
-    created_at
-)
-ON public.user_answers TO authenticated;
-
 -- Clients cannot bypass the server-owned workflow or grading through Data API.
 REVOKE INSERT, UPDATE, DELETE ON public.attempts FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.user_answers FROM anon, authenticated;
@@ -160,8 +141,14 @@ DECLARE
     v_status TEXT;
     v_grade JSONB;
     v_answer_id UUID;
+    v_question_id UUID;
+    v_selected_option_id UUID;
+    v_answer_text TEXT;
     v_is_correct BOOLEAN;
     v_points_awarded NUMERIC(7,2);
+    v_grade_count INTEGER;
+    v_unique_grade_count INTEGER;
+    v_current_answer_count INTEGER;
     v_earned_points NUMERIC;
     v_total_points NUMERIC;
     v_score NUMERIC(7,2);
@@ -182,14 +169,53 @@ BEGIN
         RETURN;
     END IF;
 
+    -- The application grades a snapshot outside this transaction (open answers
+    -- may require an LLM). Locking the attempt stops future writes, while this
+    -- cardinality check plus the value predicates below reject any answer that
+    -- changed between snapshot and finalization.
+    SELECT
+        COUNT(*)::INTEGER,
+        COUNT(DISTINCT (grade ->> 'answer_id')::UUID)::INTEGER
+    INTO v_grade_count, v_unique_grade_count
+    FROM jsonb_array_elements(COALESCE(p_grades, '[]'::JSONB)) AS grade;
+
+    SELECT COUNT(*)::INTEGER
+    INTO v_current_answer_count
+    FROM public.user_answers AS answer
+    WHERE answer.attempt_id = p_attempt_id;
+
+    IF v_grade_count <> v_current_answer_count
+       OR v_unique_grade_count <> v_grade_count THEN
+        RAISE EXCEPTION 'attempt_answers_changed'
+            USING ERRCODE = '40001';
+    END IF;
+
     FOR v_grade IN
         SELECT value FROM jsonb_array_elements(COALESCE(p_grades, '[]'::jsonb))
     LOOP
+        IF NOT (
+            v_grade ? 'answer_id'
+            AND v_grade ? 'question_id'
+            AND v_grade ? 'selected_option_id'
+            AND v_grade ? 'answer_text'
+            AND v_grade ? 'is_correct'
+            AND v_grade ? 'points_awarded'
+        ) THEN
+            RAISE EXCEPTION 'invalid_answer_grade'
+                USING ERRCODE = '22023';
+        END IF;
+
         v_answer_id := (v_grade ->> 'answer_id')::UUID;
+        v_question_id := (v_grade ->> 'question_id')::UUID;
+        v_selected_option_id := (v_grade ->> 'selected_option_id')::UUID;
+        v_answer_text := v_grade ->> 'answer_text';
         v_is_correct := (v_grade ->> 'is_correct')::BOOLEAN;
         v_points_awarded := (v_grade ->> 'points_awarded')::NUMERIC(7,2);
 
-        IF v_answer_id IS NULL OR v_is_correct IS NULL OR v_points_awarded < 0 THEN
+        IF v_answer_id IS NULL
+           OR v_question_id IS NULL
+           OR v_is_correct IS NULL
+           OR v_points_awarded < 0 THEN
             RAISE EXCEPTION 'invalid_answer_grade'
                 USING ERRCODE = '22023';
         END IF;
@@ -199,6 +225,9 @@ BEGIN
             points_awarded = v_points_awarded
         WHERE answer.answer_id = v_answer_id
           AND answer.attempt_id = p_attempt_id
+          AND answer.question_id = v_question_id
+          AND answer.selected_option_id IS NOT DISTINCT FROM v_selected_option_id
+          AND answer.answer_text IS NOT DISTINCT FROM v_answer_text
           AND EXISTS (
               SELECT 1
               FROM public.exam_questions AS exam_question

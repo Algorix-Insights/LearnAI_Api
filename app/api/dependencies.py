@@ -40,6 +40,7 @@ from app.infra.db.supabase import (
 )
 from app.infra.repositories import (
     AttemptRepository,
+    AiUsageRepository,
     DocumentChunkRepository,
     DocumentRepository,
     ExamQuestionRepository,
@@ -51,6 +52,7 @@ from app.infra.repositories import (
     PersonalNotebookRepository,
     QuestionOptionRepository,
     QuestionRepository,
+    RagGenerationRepository,
     RoomNotebookRepository,
     RoomRepository,
     StudyMemberRepository,
@@ -142,6 +144,7 @@ def get_exam_attempt_workflow_use_case() -> ExamAttemptWorkflowUseCase:
     return ExamAttemptWorkflowUseCase(
         AttemptRepository(admin),
         open_answer_verifier=verifier,
+        usage=AiUsageRepository(admin),
     )
 
 
@@ -257,10 +260,11 @@ def get_rag_use_case() -> RagUseCase:
         flashcards=FlashcardRepository(admin),
         search=RagSearchRepository(admin),
         access=NotebookAccessRepository(admin),
-        users=UserRepository(admin),
         storage=SupabaseStorage(admin),
         llm=_openrouter_client(),
         settings=get_settings(),
+        generation=RagGenerationRepository(admin),
+        usage=AiUsageRepository(admin),
     )
 
 

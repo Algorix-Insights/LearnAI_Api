@@ -9,6 +9,9 @@ class UserStatisticsRepository(Protocol):
         raise NotImplementedError
 
     async def record_event(
-        self, user_id: UUID, event: LearningEventCreate
+        self,
+        user_id: UUID,
+        event: LearningEventCreate,
+        idempotency_key: str,
     ) -> dict[str, Any]:
         raise NotImplementedError

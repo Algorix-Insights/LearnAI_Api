@@ -58,6 +58,13 @@ class ExamAttemptGrader:
                 grades.append(
                     {
                         "answer_id": str(answer["answer_id"]),
+                        "question_id": str(answer["question_id"]),
+                        "selected_option_id": (
+                            str(answer["selected_option_id"])
+                            if answer.get("selected_option_id") is not None
+                            else None
+                        ),
+                        "answer_text": answer.get("answer_text"),
                         "is_correct": is_correct,
                         "points_awarded": str(awarded.quantize(self._two_decimals)),
                     }

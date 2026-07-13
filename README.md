@@ -8,9 +8,9 @@ Este repositorio concentra la logica del servidor, la persistencia, la autentica
 
 ## Documentacion actual
 
-El estado actual de la aplicacion expone CRUD por agregado y relaciones REST entre recursos. Para consumir o extender esta version, usar estas guias:
+La API expone flujos autenticados y aislados por usuario para perfil, cuadernos, salas, RAG, evaluaciones y progreso. Para consumir o extender esta versión, usa estas guías:
 
-- [Guia de consumo de API](docs/guia-consumo-api.md): endpoints CRUD actuales, contratos generales, relaciones REST y errores en espanol.
+- [Guía de consumo de API](docs/guia-consumo-api.md): contratos para frontend, avatar, RAG, generación, intentos, calificación y estadísticas.
 - [Guia para contribuir como desarrollador](docs/guia-contribucion-desarrollador.md): patron de desarrollo por recurso con Clean Architecture, contratos Pydantic, use cases, servicios y repositorios.
 
 ## Arquitectura
@@ -140,6 +140,17 @@ uvicorn app.main:app --reload
 ```
 
 La API estará disponible en `http://127.0.0.1:8000`. Puedes acceder a la documentación interactiva en `/docs`.
+
+### Base de datos Supabase
+
+Las migraciones versionadas viven en `supabase/migrations/`. Esta entrega contiene 12 migraciones timestamped, de `20260713000100_initial_schema.sql` a `20260713001200_ai_usage_quotas.sql`. Antes de aplicar cambios a un proyecto existente, ejecuta `scripts/security_preflight.sql` y revisa cualquier policy ajena a `learnia_*`.
+
+```bash
+npx supabase db push --dry-run --db-url "$SUPABASE_SESSION_URL" --include-all
+npx supabase db push --db-url "$SUPABASE_SESSION_URL" --include-all
+```
+
+El segundo comando modifica la base de datos; úsalo solo después de validar el dry-run en staging.
 
 ### Pruebas
 

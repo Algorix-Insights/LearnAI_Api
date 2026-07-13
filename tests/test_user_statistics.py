@@ -6,9 +6,10 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
 from app.application.usecases.user_statistics import UserStatisticsUseCase
-from app.core.exceptions import ForbiddenError
+from app.core.exceptions import BadRequestError
 from app.domain.schemas.resources.user_statistics import (
     LearningEventCreate,
     UserStatisticsRequest,
@@ -79,19 +80,28 @@ class FakeStatisticsRepository:
             ],
         }
         self.recorded: dict[str, Any] | None = None
+        self.snapshot_loads = 0
 
     async def load_snapshot(self, user_id: UUID) -> dict[str, list[dict[str, Any]]]:
         assert user_id == USER_ID
+        self.snapshot_loads += 1
         return self.snapshot
 
     async def record_event(
-        self, user_id: UUID, event: LearningEventCreate
+        self,
+        user_id: UUID,
+        event: LearningEventCreate,
+        idempotency_key: str,
     ) -> dict[str, Any]:
-        self.recorded = {"user_id": str(user_id), **event.model_dump(mode="json")}
+        self.recorded = {
+            "user_id": str(user_id),
+            "idempotency_key": idempotency_key,
+            **event.model_dump(mode="json"),
+        }
         return {
             "event_id": "00000000-0000-0000-0000-000000000060",
             "occurred_at": datetime.now(UTC).isoformat(),
-            **self.recorded,
+            **{key: value for key, value in self.recorded.items() if key != "idempotency_key"},
         }
 
 
@@ -121,7 +131,7 @@ def test_statistics_builds_dashboard_from_user_scoped_data() -> None:
     }
 
 
-def test_record_learning_event_uses_authenticated_user_and_checks_access() -> None:
+def test_record_learning_event_uses_actor_and_atomic_repository_workflow() -> None:
     repository = FakeStatisticsRepository()
     use_case = UserStatisticsUseCase(repository)
     event = LearningEventCreate(
@@ -130,14 +140,47 @@ def test_record_learning_event_uses_authenticated_user_and_checks_access() -> No
         duration_seconds=1200,
     )
 
-    response = asyncio.run(use_case.record(USER_ID, event))
+    response = asyncio.run(use_case.record(USER_ID, event, "learning-event:0001"))
 
     assert response.data.user_id == USER_ID
     assert repository.recorded is not None
     assert repository.recorded["user_id"] == str(USER_ID)
+    assert repository.recorded["idempotency_key"] == "learning-event:0001"
+    # Authorization is enforced in the same DB transaction as the insert.
+    assert repository.snapshot_loads == 0
 
-    forbidden_event = event.model_copy(
-        update={"notebook_id": UUID("00000000-0000-0000-0000-000000000099")}
-    )
-    with pytest.raises(ForbiddenError):
-        asyncio.run(use_case.record(USER_ID, forbidden_event))
+    with pytest.raises(BadRequestError):
+        asyncio.run(use_case.record(USER_ID, event, "too-short"))
+
+
+def test_learning_event_rejects_inflated_or_inconsistent_metrics() -> None:
+    with pytest.raises(ValidationError):
+        LearningEventCreate(
+            notebook_id=NOTEBOOK_ID,
+            activity_type="study_session",
+            quantity=2,
+            duration_seconds=1200,
+        )
+
+    with pytest.raises(ValidationError):
+        LearningEventCreate(
+            notebook_id=NOTEBOOK_ID,
+            activity_type="study_session",
+            duration_seconds=20,
+        )
+
+    with pytest.raises(ValidationError):
+        LearningEventCreate(
+            notebook_id=NOTEBOOK_ID,
+            activity_type="flashcard_reviewed",
+            quantity=51,
+            duration_seconds=60,
+        )
+
+    with pytest.raises(ValidationError):
+        LearningEventCreate(
+            notebook_id=NOTEBOOK_ID,
+            activity_type="flashcard_reviewed",
+            quantity=10,
+            duration_seconds=3601,
+        )
