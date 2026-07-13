@@ -11,7 +11,8 @@ RUN addgroup --system app \
 COPY pyproject.toml ./
 COPY app ./app
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir . \
+    && python -c "from app.main import app"
 
 USER app
 
