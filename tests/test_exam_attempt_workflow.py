@@ -116,6 +116,7 @@ class FakeExamAttemptRepository:
             "attempt_id": attempt_id,
             "exam_id": exam_id,
             "user_id": user_id,
+            "attempt_number": 1,
             "status": "in_progress",
             "score": 0,
             "started_at": started_at,
@@ -248,6 +249,18 @@ class FailingOpenAnswerVerifier:
         raise RuntimeError("provider unavailable")
 
 
+class FakeUsage:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def reserve(
+        self, *, actor_id: str, operation: str, units: int = 1
+    ) -> None:
+        self.calls.append(
+            {"actor_id": actor_id, "operation": operation, "units": units}
+        )
+
+
 class CapturingRpcClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -262,6 +275,16 @@ class CapturingRpcClient:
                     "question_id": params["p_question_id"],
                 }
             ]
+        elif function_name == "start_exam_attempt":
+            data = [
+                {
+                    "attempt_id": str(ATTEMPT_ID),
+                    "exam_id": params["p_exam_id"],
+                    "user_id": params["p_user_id"],
+                    "attempt_number": 1,
+                    "status": "in_progress",
+                }
+            ]
         else:
             data = [
                 {
@@ -274,11 +297,11 @@ class CapturingRpcClient:
         return SimpleNamespace(execute=lambda: SimpleNamespace(data=data))
 
 
-def test_start_is_safe_and_rejects_second_active_attempt() -> None:
-    asyncio.run(_start_is_safe_and_rejects_second_active_attempt())
+def test_start_is_safe_and_recovers_second_active_attempt() -> None:
+    asyncio.run(_start_is_safe_and_recovers_second_active_attempt())
 
 
-async def _start_is_safe_and_rejects_second_active_attempt() -> None:
+async def _start_is_safe_and_recovers_second_active_attempt() -> None:
     repository = FakeExamAttemptRepository()
     use_case = ExamAttemptWorkflowUseCase(repository)
 
@@ -286,6 +309,8 @@ async def _start_is_safe_and_rejects_second_active_attempt() -> None:
     body = response.model_dump(mode="json")
 
     assert body["data"]["attempt_id"] == str(ATTEMPT_ID)
+    assert body["data"]["attempt_number"] == 1
+    assert body["data"]["attempts_remaining"] == 4
     serialized = str(body)
     assert "expected_answer" not in serialized
     assert "is_correct" not in serialized
@@ -296,9 +321,8 @@ async def _start_is_safe_and_rejects_second_active_attempt() -> None:
         "Paris",
     ]
 
-    with pytest.raises(ApiError) as duplicate:
-        await use_case.start(exam_id=EXAM_ID, user_id=USER_A)
-    assert duplicate.value.status_code == 409
+    resumed = await use_case.start(exam_id=EXAM_ID, user_id=USER_A)
+    assert resumed.data.attempt_id == response.data.attempt_id
 
 
 def test_start_hides_exam_existence_and_rejects_unavailable_exam() -> None:
@@ -478,6 +502,7 @@ async def _finish_calculates_weighted_score_server_side_and_closes_attempt() -> 
     assert finished.data.earned_points == 5.0
     assert finished.data.total_points == 5.0
     assert finished.data.answered_questions == 2
+    assert [answer.is_correct for answer in finished.data.answers] == [True, True]
     assert all("answer_id" in grade for grade in repository.last_grades)
     assert repository.attempts[str(ATTEMPT_ID)]["status"] == "completed"
 
@@ -525,7 +550,12 @@ def test_async_open_answer_verifier_can_override_exact_match_fallback() -> None:
 async def _async_open_answer_verifier_can_override_exact_match_fallback() -> None:
     repository = FakeExamAttemptRepository()
     verifier = FakeOpenAnswerVerifier(is_correct=True)
-    use_case = ExamAttemptWorkflowUseCase(repository, open_answer_verifier=verifier)
+    usage = FakeUsage()
+    use_case = ExamAttemptWorkflowUseCase(
+        repository,
+        open_answer_verifier=verifier,
+        usage=usage,  # type: ignore[arg-type]
+    )
     await use_case.start(exam_id=EXAM_ID, user_id=USER_A)
     await use_case.submit_answer(
         attempt_id=ATTEMPT_ID,
@@ -541,6 +571,13 @@ async def _async_open_answer_verifier_can_override_exact_match_fallback() -> Non
     assert finished.data.score == 60.0
     assert len(verifier.calls) == 1
     assert verifier.calls[0]["question"] == "Que convierte la fotosintesis?"
+    assert usage.calls == [
+        {
+            "actor_id": str(USER_A),
+            "operation": "exam_grading",
+            "units": 1,
+        }
+    ]
 
 
 def test_verifier_failure_uses_deterministic_normalized_fallback() -> None:
@@ -598,6 +635,27 @@ async def _repository_rpc_payload_never_accepts_client_grading_values() -> None:
     finish_name, finish_payload = client.calls[1]
     assert finish_name == "finalize_exam_attempt"
     assert "p_score" not in finish_payload
+
+
+def test_repository_starts_attempt_through_atomic_rpc() -> None:
+    client = CapturingRpcClient()
+    repository = AttemptRepository(client)  # type: ignore[arg-type]
+
+    attempt = asyncio.run(
+        repository.create_workflow_attempt(
+            exam_id=str(EXAM_ID),
+            user_id=str(USER_A),
+            started_at=datetime.now(UTC),
+        )
+    )
+
+    assert client.calls == [
+        (
+            "start_exam_attempt",
+            {"p_exam_id": str(EXAM_ID), "p_user_id": str(USER_A)},
+        )
+    ]
+    assert attempt is not None and attempt["attempt_number"] == 1
 
 
 def test_http_workflow_requires_auth_and_rejects_grade_tampering() -> None:

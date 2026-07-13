@@ -17,6 +17,7 @@ from app.domain.schemas.resources.rag import (
     ExamGenerationResponse,
     FlashcardGenerationRequest,
     FlashcardGenerationResponse,
+    FlashcardStudyListResponse,
     MessageListResponse,
 )
 from app.domain.schemas.resources.documents import DocumentResponse
@@ -158,6 +159,26 @@ async def generate_notebook_flashcards(
         notebook_id=notebook_id,
         user_id=_actor_id(current_user),
         request=payload,
+    )
+
+
+@router.get(
+    "/notebooks/{notebook_id}/flashcards",
+    response_model=FlashcardStudyListResponse,
+    tags=["flashcards"],
+)
+async def list_notebook_flashcards(
+    notebook_id: UUID,
+    current_user: Annotated[UserRead, Depends(get_current_user)],
+    use_case: Annotated[RagUseCase, Depends(get_rag_use_case)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> FlashcardStudyListResponse:
+    return await use_case.list_flashcards(
+        notebook_id=notebook_id,
+        user_id=_actor_id(current_user),
+        limit=limit,
+        offset=offset,
     )
 
 

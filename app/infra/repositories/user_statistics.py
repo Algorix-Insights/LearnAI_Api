@@ -88,7 +88,7 @@ class UserStatisticsRepository:
             notebook_ids = self._notebook_ids_for_user(user_id)
             notebooks = self._select_for_ids(
                 "notebooks",
-                "notebook_id,name,due_date,status,is_dominated",
+                "notebook_id,name,due_date,status",
                 "notebook_id",
                 notebook_ids,
             )

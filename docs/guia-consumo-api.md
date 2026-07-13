@@ -34,6 +34,13 @@ Las respuestas de un recurso usan `{ "data": ... }`. Los listados agregan `limit
 }
 ```
 
+### OTP, registro passwordless y SMTP
+
+- `POST /api/v1/auth/otp` admite una solicitud por correo cada 60 segundos. Ante `429`, conserva el estado del formulario y respeta `Retry-After` antes de habilitar **Reenviar**.
+- Configurar SMTP propio cambia el transporte del correo, pero no elimina los límites de Supabase Auth. Revisa también **Authentication → Rate Limits** en el proyecto.
+- Un registro sin `password` solo inicia la verificación. La respuesta contiene `access_token: ""` y `user: null`; el usuario y la sesión aparecen después de completar el Magic Link/OTP.
+- El frontend puede enviar `captcha_token` en registro, login, OTP, verificación y recuperación cuando CAPTCHA esté habilitado.
+
 ## Errores y reintentos
 
 Los errores de dominio tienen una forma estable:
@@ -65,7 +72,7 @@ Códigos relevantes:
 - `401`: JWT ausente, vencido o inválido.
 - `403`: el usuario no tiene acceso al recurso.
 - `404`: recurso inexistente o ajeno; el API evita revelar recursos de otros usuarios.
-- `409`: conflicto de estado, intento activo o clave idempotente reutilizada con otro payload.
+- `409`: conflicto de estado, límite de intentos o clave idempotente reutilizada con otro payload.
 - `413`: request mayor al límite global configurado.
 - `422`: payload no cumple el contrato.
 - `429`: límite de frecuencia; respeta el header `Retry-After` y no hagas reintentos inmediatos.
@@ -129,7 +136,7 @@ Respuesta `201`:
 {
   "data": {
     "user_id": "b9b031f0-4fd4-4c94-93af-49b9a4561140",
-    "storage_path": "b9b031f0-4fd4-4c94-93af-49b9a4561140/profile.png",
+    "storage_path": "b9b031f0-4fd4-4c94-93af-49b9a4561140/profile-c9833dc0-81fd-4232-b982-147222c946ae.png",
     "mime_type": "image/png",
     "size_bytes": 102400,
     "url": "https://...signed-url...",
@@ -219,12 +226,13 @@ RLS limita los resultados a recursos accesibles por el usuario autenticado.
 
 Las operaciones que consumen proveedores de IA tienen cuotas por usuario, persistidas en PostgreSQL. Se comparten entre instancias del API y no se reinician al desplegar o reiniciar el servidor.
 
-| Operación | Endpoint principal                                    | Por hora móvil | Por día UTC |
-| ---------- | ----------------------------------------------------- | --------------: | -----------: |
-| Chat       | `POST /conversations/{conversation_id}/messages`    |              30 |          200 |
-| Embeddings | `POST /notebooks/{notebook_id}/documents/upload`    |              20 |          100 |
-| Flashcards | `POST /notebooks/{notebook_id}/flashcards/generate` |              10 |           30 |
-| Examen     | `POST /notebooks/{notebook_id}/exams/generate`      |               5 |           15 |
+| Operación            | Endpoint principal                                      | Por hora móvil | Por día UTC    |
+| -------------------- | ------------------------------------------------------- | -------------: | -------------: |
+| Chat                 | `POST /conversations/{conversation_id}/messages`        |             30 |            200 |
+| Embeddings           | `POST /notebooks/{notebook_id}/documents/upload`        |             20 |            100 |
+| Flashcards           | `POST /notebooks/{notebook_id}/flashcards/generate`     |             10 |             30 |
+| Examen               | `POST /notebooks/{notebook_id}/exams/generate`          |              5 |             15 |
+| Calificación abierta | `POST /attempts/{attempt_id}/finish`                     |  30 respuestas | 100 respuestas |
 
 Cuando se alcanza una cuota, el API responde `429`:
 
@@ -247,7 +255,7 @@ Content-Type: multipart/form-data
 - `description`: opcional; máximo 1000 caracteres.
 - PDF: máximo 200 páginas.
 - El procesamiento es síncrono: extracción, chunks, embeddings y persistencia ocurren antes de responder.
-- Si el mismo contenido ya existe en el cuaderno, se devuelve el documento existente.
+- Si el mismo contenido ya terminó correctamente, se devuelve el documento existente; si quedó en `failed`, se limpia y reprocesa.
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/notebooks/$NOTEBOOK_ID/documents/upload \
@@ -337,6 +345,7 @@ POST /api/v1/conversations/{conversation_id}/messages
 ```
 
 No envíes `user_id` en multipart, body ni query params. La conversación pertenece al usuario autenticado y no se expone a otros miembros del cuaderno.
+Cada turno usa un historial reciente acotado además del contexto recuperado, por lo que las preguntas de seguimiento conservan la conversación.
 
 ## Generación de recursos con RAG
 
@@ -371,6 +380,14 @@ POST /api/v1/notebooks/{notebook_id}/flashcards/generate
   "sources": []
 }
 ```
+
+Para recuperar las tarjetas persistidas y volver a estudiarlas:
+
+```http
+GET /api/v1/notebooks/{notebook_id}/flashcards?limit=100&offset=0
+```
+
+El listado incluye `question` y `answer` porque son material de estudio. Las claves de corrección de preguntas pertenecientes a exámenes nunca se entregan por este contrato.
 
 ### Generar un examen
 
@@ -426,7 +443,7 @@ La respuesta incluye IDs, enunciados y opciones, pero nunca `expected_answer`, `
 
 ## Intentos y calificación de exámenes
 
-El flujo público es `iniciar → consultar/recuperar → responder → finalizar`. Solo puede existir un intento `in_progress` por usuario y examen.
+El flujo público es `iniciar/reanudar → consultar → responder → finalizar`. Solo puede existir un intento `in_progress` por usuario y examen y cada usuario dispone de un máximo de 5 intentos por examen.
 
 ### 1. Iniciar
 
@@ -448,6 +465,9 @@ Respuesta `201`:
     "attempt_id": "6b395c9e-9d10-4f01-987f-a059986d338f",
     "exam_id": "a2f18c70-fb56-4fc7-8871-ea28ee2fa0d1",
     "status": "in_progress",
+    "attempt_number": 1,
+    "max_attempts": 5,
+    "attempts_remaining": 4,
     "started_at": "2026-07-13T16:40:00Z",
     "questions": [
       {
@@ -470,7 +490,7 @@ Respuesta `201`:
 }
 ```
 
-Si ya hay un intento activo devuelve `409`; recupera su ID desde el estado conservado por frontend y usa el siguiente endpoint.
+El `POST` es recuperable: si ya existe un intento activo, devuelve esa misma sesión y sus respuestas en lugar de crear otro. Tras completar el quinto intento, un nuevo inicio devuelve `409`.
 
 ### 2. Consultar o recuperar la sesión
 
@@ -522,18 +542,33 @@ Body requerido:
     "attempt_id": "6b395c9e-9d10-4f01-987f-a059986d338f",
     "exam_id": "a2f18c70-fb56-4fc7-8871-ea28ee2fa0d1",
     "status": "completed",
+    "attempt_number": 1,
+    "max_attempts": 5,
+    "attempts_remaining": 4,
     "score": 80,
     "earned_points": 8,
     "total_points": 10,
     "answered_questions": 10,
     "total_questions": 10,
     "completed_at": "2026-07-13T16:55:00Z",
-    "spent_time": 900
+    "spent_time": 900,
+    "answers": [
+      {
+        "answer_id": "8c93f257-770f-462b-b360-4c59770c60d5",
+        "question_id": "a6f42adf-063c-4151-b2bc-9d23b3b254ca",
+        "is_correct": true,
+        "points_awarded": 1,
+        "confidence": 0.96,
+        "feedback": "La respuesta identifica correctamente el concepto central."
+      }
+    ]
   }
 }
 ```
 
-El servidor calcula tiempo, aciertos, puntos y porcentaje. Las preguntas cerradas se comparan contra su opción interna; las abiertas usan verificación semántica y, si el proveedor no está disponible, una comparación determinista segura. Un intento finalizado no acepta más respuestas ni una segunda finalización.
+El servidor calcula tiempo, aciertos, puntos y porcentaje. Las preguntas cerradas se comparan contra su opción interna; las abiertas usan verificación semántica y, si el proveedor no está disponible, una comparación determinista segura. `confidence` y `feedback` pueden ser `null` cuando no hubo verificación semántica. Un intento finalizado no acepta más respuestas ni una segunda finalización.
+
+Si una respuesta cambia de forma concurrente mientras se finaliza, el API devuelve `409`: vuelve a consultar la sesión y repite la finalización. Esto evita calificar una fotografía inconsistente de las respuestas.
 
 ## Estadísticas de usuario
 
@@ -660,6 +695,8 @@ Reglas:
 - Repetir la misma clave con el mismo payload devuelve el evento original, sin duplicar estadísticas.
 - Reutilizarla con otro payload devuelve `409`.
 - Ante `429`, conserva la misma clave para el reintento y respeta `Retry-After`.
+
+El backend registra automáticamente eventos de fuente subida, recurso generado y cuaderno compartido. El frontend solo debe enviar sesiones de estudio y repasos de flashcards para evitar duplicados.
 
 ## Endpoints retirados o restringidos
 

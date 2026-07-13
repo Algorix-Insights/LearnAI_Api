@@ -118,7 +118,9 @@ def test_statistics_builds_dashboard_from_user_scoped_data() -> None:
 
     assert response.data.overview.average_score == 65
     assert response.data.overview.completed_exams == 1
-    assert response.data.overview.notebooks_dominated == 1
+    # Mastery is derived per user from their attempts; the notebook's legacy
+    # shared flag must not mark every room member as having mastered it.
+    assert response.data.overview.notebooks_dominated == 0
     assert response.data.overview.total_study_seconds == 900
     assert response.data.reinforcement[0].name == "Algoritmos"
     assert response.data.reinforcement[0].flashcards_count == 1

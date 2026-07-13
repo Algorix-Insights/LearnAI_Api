@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from app.core.exceptions import RepositoryError
+from app.core.exceptions import ApiError, RepositoryError
 from app.domain.schemas.resources.attempts import (
     AttemptRepositoryCreateRequest,
     AttemptRepositoryDeleteRequest,
@@ -166,24 +166,22 @@ class AttemptRepository(BaseSupabaseRepository):
     async def create_workflow_attempt(
         self, *, exam_id: str, user_id: str, started_at: datetime
     ) -> dict[str, Any] | None:
+        del started_at
         try:
-            query = (
-                self.client.table(self.table_name)
-                .insert(
-                    {
-                        "exam_id": exam_id,
-                        "user_id": user_id,
-                        "score": 0,
-                        "status": "in_progress",
-                        "started_at": started_at.isoformat(),
-                        "spent_time": 0,
-                    }
-                )
+            query = self.client.rpc(
+                "start_exam_attempt",
+                {
+                    "p_exam_id": exam_id,
+                    "p_user_id": user_id,
+                },
             )
             response = await self._execute(query)
         except Exception as exc:
-            if self._is_unique_violation(exc):
-                return None
+            if "attempt_limit_reached" in self._error_text(exc):
+                raise ApiError(
+                    409,
+                    "Alcanzaste el máximo de 5 intentos para este examen.",
+                ) from exc
             raise RepositoryError("iniciar el intento") from exc
         return self._first(response.data)
 
@@ -263,12 +261,18 @@ class AttemptRepository(BaseSupabaseRepository):
             )
             response = await self._execute(query)
         except Exception as exc:
-            if "attempt_answers_changed" in str(exc).casefold():
+            if "attempt_answers_changed" in self._error_text(exc):
                 return None
             raise RepositoryError("finalizar el intento") from exc
         return self._first(response.data)
 
-    def _is_unique_violation(self, exc: Exception) -> bool:
-        code = getattr(exc, "code", None)
-        message = str(exc).lower()
-        return code == "23505" or "attempts_one_active_per_user_exam" in message
+    def _error_text(self, exc: Exception) -> str:
+        return " ".join(
+            str(value)
+            for value in (
+                getattr(exc, "message", ""),
+                getattr(exc, "code", ""),
+                exc,
+            )
+            if value
+        ).casefold()

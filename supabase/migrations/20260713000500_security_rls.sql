@@ -466,6 +466,36 @@ GRANT ALL PRIVILEGES ON TABLE
     public.notebook_tags
 TO service_role;
 
+-- Row policies cannot hide individual columns. Keep credentials and
+-- server-controlled user attributes unavailable to direct Data API calls.
+REVOKE SELECT ON TABLE public.users
+FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.users
+FROM PUBLIC, anon, authenticated;
+GRANT SELECT (
+    user_id,
+    name,
+    last_name,
+    email,
+    streak,
+    status,
+    profile_image_path,
+    profile_image_mime_type,
+    profile_image_size_bytes,
+    created_at,
+    updated_at,
+    last_login
+) ON TABLE public.users TO authenticated;
+GRANT UPDATE (
+    name,
+    last_name,
+    profile_image_path,
+    profile_image_mime_type,
+    profile_image_size_bytes,
+    updated_at
+) ON TABLE public.users TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.users TO service_role;
+
 GRANT SELECT ON TABLE public.health TO anon, authenticated;
 GRANT SELECT, DELETE ON TABLE public.notebooks TO authenticated;
 GRANT UPDATE (
@@ -544,37 +574,7 @@ GRANT INSERT (
     tag_id
 ) ON TABLE public.notebook_tags TO authenticated;
 
--- Row policies cannot hide individual columns. Keep credentials,
--- server-controlled attributes and grading material unavailable even when a
--- client calls PostgREST directly with the public project key.
-REVOKE SELECT ON TABLE public.users
-FROM PUBLIC, anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.users
-FROM PUBLIC, anon, authenticated;
-GRANT SELECT (
-    user_id,
-    name,
-    last_name,
-    email,
-    streak,
-    status,
-    profile_image_path,
-    profile_image_mime_type,
-    profile_image_size_bytes,
-    created_at,
-    updated_at,
-    last_login
-) ON TABLE public.users TO authenticated;
-GRANT UPDATE (
-    name,
-    last_name,
-    profile_image_path,
-    profile_image_mime_type,
-    profile_image_size_bytes,
-    updated_at
-) ON TABLE public.users TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.users TO service_role;
-
+-- The same column-level protection applies to grading material.
 REVOKE SELECT ON TABLE public.questions
 FROM PUBLIC, anon, authenticated;
 GRANT SELECT (

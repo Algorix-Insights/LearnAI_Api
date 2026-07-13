@@ -337,7 +337,9 @@ class UserStatisticsUseCase:
         if activity_type == "study_session":
             return "Completaste una sesion de estudio"
         if activity_type == "resource_generated":
-            return "Generaste un recurso de estudio"
+            return f"Generaste {quantity} recurso(s) de estudio"
         if activity_type == "document_uploaded":
             return "Subiste un documento"
+        if activity_type == "notebook_shared":
+            return "Compartiste un cuaderno"
         return "Registraste actividad de aprendizaje"

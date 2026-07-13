@@ -354,13 +354,17 @@ CREATE INDEX IF NOT EXISTS messages_sent_by_user_id_idx
 ON messages (sent_by_user_id)
 WHERE sent_by_user_id IS NOT NULL;
 
-CREATE OR REPLACE FUNCTION set_updated_at()
+CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = '';
+
+REVOKE ALL ON FUNCTION public.set_updated_at()
+FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 CREATE TRIGGER trg_users_updated_at

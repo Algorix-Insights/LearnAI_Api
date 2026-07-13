@@ -76,7 +76,6 @@ class StudyMemberCreate(StrictSchema):
 
 
 class StudyMemberUpdate(StrictSchema):
-    user_id: UUID | None = None
     nickname: str | None = None
 
 
@@ -118,7 +117,6 @@ class ExamCreate(StrictSchema):
 
 
 class ExamUpdate(StrictSchema):
-    notebook_id: UUID | None = None
     name: str | None = None
     description: str | None = None
     status: Literal["active", "archived", "deleted"] | None = None
@@ -164,7 +162,6 @@ class QuestionOptionCreate(StrictSchema):
 
 
 class QuestionOptionUpdate(StrictSchema):
-    question_id: UUID | None = None
     option_text: str | None = None
     is_correct: bool | None = None
     option_order: int | None = Field(default=None, gt=0)

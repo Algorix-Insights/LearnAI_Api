@@ -172,6 +172,22 @@ class FlashcardGenerationResponse(RagSchema):
     sources: list[RagSource]
 
 
+class FlashcardStudyRead(RagSchema):
+    flashcard_id: UUID
+    question_id: UUID
+    notebook_id: UUID
+    question: str
+    answer: str
+    spent_time: int = 0
+    created_at: datetime | None = None
+
+
+class FlashcardStudyListResponse(RagSchema):
+    data: list[FlashcardStudyRead]
+    limit: int
+    offset: int
+
+
 class MultipleChoiceQuestionDraft(RagSchema):
     type: Literal["multiple_choice"]
     statement: str = Field(min_length=1, max_length=2000)

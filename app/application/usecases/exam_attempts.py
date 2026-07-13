@@ -173,6 +173,11 @@ class ExamAttemptWorkflowUseCase:
                 attempt_id=UUID(str(finished["attempt_id"])),
                 exam_id=UUID(str(finished["exam_id"])),
                 status=str(finished["status"]),
+                attempt_number=int(finished.get("attempt_number") or 1),
+                attempts_remaining=max(
+                    0,
+                    5 - int(finished.get("attempt_number") or 1),
+                ),
                 score=float(finished["score"]),
                 earned_points=float(grade.earned_points),
                 total_points=float(grade.total_points),
@@ -283,6 +288,11 @@ class ExamAttemptWorkflowUseCase:
                 attempt_id=UUID(str(attempt["attempt_id"])),
                 exam_id=UUID(str(attempt["exam_id"])),
                 status=str(attempt["status"]),
+                attempt_number=int(attempt.get("attempt_number") or 1),
+                attempts_remaining=max(
+                    0,
+                    5 - int(attempt.get("attempt_number") or 1),
+                ),
                 started_at=self._optional_datetime(attempt.get("started_at")),
                 questions=safe_questions,
                 answers=[self._safe_answer(answer) for answer in answers],
@@ -376,12 +386,6 @@ class ExamAttemptWorkflowUseCase:
                 else None
             ),
             answer_text=answer.get("answer_text"),
-            is_correct=answer.get("is_correct"),
-            points_awarded=(
-                float(answer["points_awarded"])
-                if answer.get("points_awarded") is not None
-                else None
-            ),
             created_at=self._optional_datetime(answer.get("created_at")),
         )
 

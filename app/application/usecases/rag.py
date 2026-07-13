@@ -54,6 +54,7 @@ from app.domain.schemas.resources.rag import (
     FlashcardDraftSet,
     FlashcardGenerationRequest,
     FlashcardGenerationResponse,
+    FlashcardStudyListResponse,
     MessageListResponse,
     MultipleChoiceQuestionDraft,
     OpenQuestionDraft,
@@ -236,6 +237,14 @@ class RagUseCase:
         except Exception:
             await self._update_document_status(str(document["document_id"]), "failed")
             raise
+        await self._record_server_activity(
+            actor_id=user_id,
+            notebook_id=notebook_id,
+            activity_type="document_uploaded",
+            quantity=1,
+            idempotency_key=f"server:document:{document['document_id']}",
+            metadata={"document_id": str(document["document_id"])},
+        )
         return DocumentUploadResponse(data={**document, "chunks_count": len(chunks)})
 
     async def delete_document(
@@ -415,6 +424,25 @@ class RagUseCase:
                 }
             )
         return FlashcardGenerationResponse(data=generated, sources=sources)
+
+    async def list_flashcards(
+        self,
+        *,
+        notebook_id: UUID,
+        user_id: UUID,
+        limit: int,
+        offset: int,
+    ) -> FlashcardStudyListResponse:
+        await self._require_access(user_id=user_id, notebook_id=notebook_id)
+        if self.generation is None:
+            raise RepositoryError("listar las flashcards")
+        data = await self.generation.list_flashcards(
+            actor_id=str(user_id),
+            notebook_id=str(notebook_id),
+            limit=limit,
+            offset=offset,
+        )
+        return FlashcardStudyListResponse(data=data, limit=limit, offset=offset)
 
     async def generate_exam(
         self,
@@ -753,6 +781,32 @@ class RagUseCase:
     async def _reserve_ai_usage(self, user_id: UUID, operation: str) -> None:
         if self.usage is not None:
             await self.usage.reserve(actor_id=str(user_id), operation=operation)
+
+    async def _record_server_activity(
+        self,
+        *,
+        actor_id: UUID,
+        notebook_id: UUID,
+        activity_type: str,
+        quantity: int,
+        idempotency_key: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        if self.generation is None:
+            return
+        try:
+            await self.generation.record_server_activity(
+                actor_id=str(actor_id),
+                notebook_id=str(notebook_id),
+                activity_type=activity_type,
+                quantity=quantity,
+                idempotency_key=idempotency_key,
+                metadata=metadata,
+            )
+        except Exception:
+            # The document already exists and is usable; an analytics outage
+            # must not turn a successful upload into a duplicate-prone retry.
+            logger.warning("learning_activity_record_failed", exc_info=True)
 
     async def _get_conversation(
         self, conversation_id: UUID, user_id: UUID

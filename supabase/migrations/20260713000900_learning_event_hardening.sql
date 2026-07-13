@@ -208,4 +208,106 @@ GRANT EXECUTE ON FUNCTION public.record_user_learning_event(
     UUID, TEXT, INTEGER, INTEGER, TEXT
 ) TO authenticated;
 
+-- Trusted workflows record events that clients must not be allowed to forge.
+CREATE OR REPLACE FUNCTION public.record_server_learning_event(
+    p_actor_id UUID,
+    p_notebook_id UUID,
+    p_activity_type TEXT,
+    p_quantity INTEGER,
+    p_idempotency_key TEXT,
+    p_metadata JSONB DEFAULT '{}'::JSONB
+)
+RETURNS SETOF public.user_learning_events
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+SET timezone = 'UTC'
+AS $$
+DECLARE
+    existing_event public.user_learning_events%ROWTYPE;
+BEGIN
+    IF p_actor_id IS NULL
+       OR p_activity_type NOT IN ('document_uploaded', 'resource_generated')
+       OR p_quantity NOT BETWEEN 1 AND 50
+       OR p_idempotency_key IS NULL
+       OR p_idempotency_key !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$'
+       OR jsonb_typeof(COALESCE(p_metadata, '{}'::JSONB)) <> 'object'
+       OR NOT EXISTS (
+           SELECT 1
+           FROM public.users u
+           WHERE u.user_id = p_actor_id
+             AND u.status = 'active'
+       )
+       OR NOT (
+           EXISTS (
+               SELECT 1
+               FROM public.personal_notebooks pn
+               WHERE pn.notebook_id = p_notebook_id
+                 AND pn.user_id = p_actor_id
+           )
+           OR EXISTS (
+               SELECT 1
+               FROM public.room_notebooks rn
+               JOIN public.members_rooms mr ON mr.room_id = rn.room_id
+               JOIN public.study_members sm ON sm.member_id = mr.member_id
+               WHERE rn.notebook_id = p_notebook_id
+                 AND sm.user_id = p_actor_id
+           )
+       ) THEN
+        RAISE EXCEPTION 'invalid_server_learning_event'
+            USING ERRCODE = '22023';
+    END IF;
+
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended(p_actor_id::TEXT || ':' || p_idempotency_key, 0)
+    );
+
+    SELECT event.*
+    INTO existing_event
+    FROM public.user_learning_events event
+    WHERE event.user_id = p_actor_id
+      AND event.idempotency_key = p_idempotency_key;
+
+    IF FOUND THEN
+        IF existing_event.notebook_id IS DISTINCT FROM p_notebook_id
+           OR existing_event.activity_type IS DISTINCT FROM p_activity_type
+           OR existing_event.quantity IS DISTINCT FROM p_quantity
+           OR existing_event.metadata IS DISTINCT FROM COALESCE(p_metadata, '{}'::JSONB) THEN
+            RAISE EXCEPTION 'idempotency_key_reused'
+                USING ERRCODE = '23505';
+        END IF;
+        RETURN NEXT existing_event;
+        RETURN;
+    END IF;
+
+    RETURN QUERY
+    INSERT INTO public.user_learning_events AS event (
+        user_id,
+        notebook_id,
+        activity_type,
+        quantity,
+        duration_seconds,
+        metadata,
+        idempotency_key
+    )
+    VALUES (
+        p_actor_id,
+        p_notebook_id,
+        p_activity_type,
+        p_quantity,
+        0,
+        COALESCE(p_metadata, '{}'::JSONB),
+        p_idempotency_key
+    )
+    RETURNING event.*;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_server_learning_event(
+    UUID, UUID, TEXT, INTEGER, TEXT, JSONB
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_server_learning_event(
+    UUID, UUID, TEXT, INTEGER, TEXT, JSONB
+) TO service_role;
+
 COMMIT;

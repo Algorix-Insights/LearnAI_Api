@@ -166,6 +166,23 @@ BEGIN
     VALUES (p_notebook_id, p_room_id, actor_member_id)
     RETURNING * INTO created_link;
 
+    INSERT INTO public.user_learning_events (
+        user_id,
+        notebook_id,
+        activity_type,
+        quantity,
+        duration_seconds,
+        metadata
+    )
+    VALUES (
+        actor_id,
+        p_notebook_id,
+        'notebook_shared',
+        1,
+        0,
+        jsonb_build_object('room_id', p_room_id)
+    );
+
     RETURN created_link;
 END;
 $$;

@@ -16,6 +16,7 @@ class AttemptRead(BaseModel):
     attempt_id: UUID | None = None
     exam_id: UUID | None = None
     user_id: UUID | None = None
+    attempt_number: int | None = None
     score: float | None = None
     status: str | None = None
     created_at: str | None = None
@@ -118,8 +119,6 @@ class SubmittedAttemptAnswerRead(AttemptSchema):
     question_id: UUID
     selected_option_id: UUID | None = None
     answer_text: str | None = None
-    is_correct: bool | None = None
-    points_awarded: float | None = Field(default=None, ge=0)
     created_at: datetime | None = None
 
 
@@ -127,6 +126,9 @@ class AttemptSessionRead(AttemptSchema):
     attempt_id: UUID
     exam_id: UUID
     status: str
+    attempt_number: int = Field(ge=1, le=5)
+    max_attempts: int = 5
+    attempts_remaining: int = Field(ge=0, le=4)
     started_at: datetime | None = None
     questions: list[AttemptQuestionRead]
     answers: list[SubmittedAttemptAnswerRead] = Field(default_factory=list)
@@ -153,6 +155,9 @@ class FinishedAttemptRead(AttemptSchema):
     attempt_id: UUID
     exam_id: UUID
     status: str
+    attempt_number: int = Field(ge=1, le=5)
+    max_attempts: int = 5
+    attempts_remaining: int = Field(ge=0, le=4)
     score: float = Field(ge=0, le=100)
     earned_points: float = Field(ge=0)
     total_points: float = Field(ge=0)

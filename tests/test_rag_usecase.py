@@ -55,6 +55,9 @@ class FakeDocuments:
         item.update(request.payload.model_dump(exclude_unset=True, mode="json"))
         return item
 
+    async def delete(self, request) -> dict | None:
+        return self.items.pop(str(request.document_id), None)
+
 
 class FakeChunks:
     def __init__(self) -> None:
@@ -212,6 +215,7 @@ class FakeQuestionOptions:
 class FakeStorage:
     def __init__(self) -> None:
         self.uploads: list[dict[str, Any]] = []
+        self.deleted: list[str] = []
 
     async def upload(
         self,
@@ -233,6 +237,10 @@ class FakeStorage:
         )
         return path
 
+    async def delete(self, *, bucket: str, paths: list[str]) -> None:
+        del bucket
+        self.deleted.extend(paths)
+
 
 class FakeLlm:
     def __init__(self, structured_responses: list[dict[str, Any] | str] | None = None) -> None:
@@ -253,8 +261,26 @@ class FakeLlm:
         return {"choices": [{"message": {"content": "La fotosintesis usa luz. [1]"}}]}
 
 
+class FakeGeneration:
+    async def list_flashcards(
+        self, *, actor_id: str, notebook_id: str, limit: int, offset: int
+    ) -> list[dict[str, Any]]:
+        del actor_id
+        return [
+            {
+                "flashcard_id": "20000000-0000-0000-0000-000000000001",
+                "question_id": "10000000-0000-0000-0000-000000000001",
+                "notebook_id": notebook_id,
+                "question": "¿Qué usa la fotosíntesis?",
+                "answer": "Luz.",
+                "spent_time": 0,
+            }
+        ][offset : offset + limit]
+
+
 def make_use_case(
     llm: FakeLlm | None = None,
+    generation=None,
 ) -> tuple[RagUseCase, FakeStorage, FakeChunks, FakeConversations]:
     storage = FakeStorage()
     chunks = FakeChunks()
@@ -273,6 +299,7 @@ def make_use_case(
         storage=storage,
         llm=llm or FakeLlm(),
         settings=Settings(openrouter_api_key="test-key"),
+        generation=generation,
     )
     return use_case, storage, chunks, conversations
 
@@ -299,6 +326,10 @@ def test_rag_upload_vectorizes_markdown_document() -> None:
     assert storage.uploads[0]["bucket"] == "documents"
     assert chunks.items[0]["model"] == "openai/text-embedding-3-small"
     assert len(chunks.items[0]["embedding"]) == 1536
+    serialized = response.model_dump(mode="json")
+    assert "content_text" not in str(serialized)
+    assert "content_hash" not in str(serialized)
+    assert "storage_path" not in str(serialized)
 
 
 def test_rag_chat_uses_retrieved_sources_and_stores_messages() -> None:
@@ -366,6 +397,30 @@ def test_rag_rejects_oversized_document_before_reading() -> None:
     assert storage.uploads == []
 
 
+def test_rag_retries_a_previously_failed_document_hash() -> None:
+    use_case, storage, _, _ = make_use_case()
+    content = b"contenido reintentable"
+    content_hash = use_case.document_processor.content_hash(content)
+    use_case.documents.items["00000000-0000-0000-0000-000000000040"] = {
+        "document_id": "00000000-0000-0000-0000-000000000040",
+        "notebook_id": str(NOTEBOOK_ID),
+        "content_hash": content_hash,
+        "processing_status": "failed",
+        "storage_path": f"{NOTEBOOK_ID}/failed.txt",
+    }
+
+    response = run_async(
+        use_case.upload_document(
+            notebook_id=NOTEBOOK_ID,
+            user_id=USER_ID,
+            file=upload_file("notas.txt", content, "text/plain"),
+        )
+    )
+
+    assert response.data.processing_status == "completed"
+    assert f"{NOTEBOOK_ID}/failed.txt" in storage.deleted
+
+
 def test_rag_rejects_unconfigured_chat_model_before_storing_message() -> None:
     use_case, _, _, conversations = make_use_case()
 
@@ -412,6 +467,22 @@ def test_rag_generates_and_persists_flashcards_from_notebook_sources() -> None:
     response_format = llm.chat_payloads[0]["response_format"]
     assert response_format["type"] == "json_schema"
     assert response_format["json_schema"]["strict"] is True
+
+
+def test_rag_lists_flashcards_with_study_answers_after_generation() -> None:
+    use_case, _, _, _ = make_use_case(generation=FakeGeneration())
+
+    response = run_async(
+        use_case.list_flashcards(
+            notebook_id=NOTEBOOK_ID,
+            user_id=USER_ID,
+            limit=20,
+            offset=0,
+        )
+    )
+
+    assert response.data[0].question == "¿Qué usa la fotosíntesis?"
+    assert response.data[0].answer == "Luz."
 
 
 def test_rag_generates_exam_with_all_question_types_and_persists_relations() -> None:

@@ -7,6 +7,7 @@ def test_sensitive_creation_is_only_exposed_through_owned_workflows() -> None:
     assert "post" in paths["/api/v1/notebooks"]
     assert "post" in paths["/api/v1/rooms"]
     assert "post" in paths["/api/v1/notebooks/{notebook_id}/flashcards/generate"]
+    assert "get" in paths["/api/v1/notebooks/{notebook_id}/flashcards"]
     assert "post" in paths["/api/v1/notebooks/{notebook_id}/exams/generate"]
 
     for path in (

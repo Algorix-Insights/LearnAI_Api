@@ -79,6 +79,105 @@ BEGIN
         );
     END LOOP;
 
+    INSERT INTO public.user_learning_events (
+        user_id,
+        notebook_id,
+        activity_type,
+        quantity,
+        duration_seconds,
+        metadata,
+        idempotency_key
+    )
+    VALUES (
+        p_actor_id,
+        p_notebook_id,
+        'resource_generated',
+        jsonb_array_length(p_items),
+        0,
+        jsonb_build_object('resource_type', 'flashcards'),
+        'server:flashcards:' || created_flashcard_id::TEXT
+    );
+
+    RETURN result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.list_notebook_flashcards(
+    p_actor_id UUID,
+    p_notebook_id UUID,
+    p_limit INTEGER,
+    p_offset INTEGER
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    IF p_actor_id IS NULL
+       OR p_notebook_id IS NULL
+       OR p_limit NOT BETWEEN 1 AND 100
+       OR p_offset < 0
+       OR NOT EXISTS (
+           SELECT 1
+           FROM public.users u
+           WHERE u.user_id = p_actor_id
+             AND u.status = 'active'
+       )
+       OR NOT (
+           EXISTS (
+               SELECT 1
+               FROM public.personal_notebooks pn
+               WHERE pn.user_id = p_actor_id
+                 AND pn.notebook_id = p_notebook_id
+           )
+           OR EXISTS (
+               SELECT 1
+               FROM public.room_notebooks rn
+               JOIN public.members_rooms mr ON mr.room_id = rn.room_id
+               JOIN public.study_members sm ON sm.member_id = mr.member_id
+               WHERE rn.notebook_id = p_notebook_id
+                 AND sm.user_id = p_actor_id
+           )
+       ) THEN
+        RAISE EXCEPTION 'resource not found' USING ERRCODE = 'P0002';
+    END IF;
+
+    SELECT COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'flashcard_id', item.flashcard_id,
+                'question_id', item.question_id,
+                'notebook_id', item.notebook_id,
+                'question', item.statement,
+                'answer', item.expected_answer,
+                'spent_time', item.spent_time,
+                'created_at', item.created_at
+            )
+            ORDER BY item.created_at DESC
+        ),
+        '[]'::JSONB
+    )
+    INTO result
+    FROM (
+        SELECT
+            f.flashcard_id,
+            f.question_id,
+            f.notebook_id,
+            f.spent_time,
+            f.created_at,
+            q.statement,
+            q.expected_answer
+        FROM public.flashcards f
+        JOIN public.questions q ON q.question_id = f.question_id
+        WHERE f.notebook_id = p_notebook_id
+        ORDER BY f.created_at DESC
+        LIMIT p_limit
+        OFFSET p_offset
+    ) AS item;
+
     RETURN result;
 END;
 $$;
@@ -312,6 +411,25 @@ BEGIN
         );
     END LOOP;
 
+    INSERT INTO public.user_learning_events (
+        user_id,
+        notebook_id,
+        activity_type,
+        quantity,
+        duration_seconds,
+        metadata,
+        idempotency_key
+    )
+    VALUES (
+        p_actor_id,
+        p_notebook_id,
+        'resource_generated',
+        1,
+        0,
+        jsonb_build_object('resource_type', 'exam'),
+        'server:exam:' || created_exam.exam_id::TEXT
+    );
+
     RETURN jsonb_build_object(
         'exam_id', created_exam.exam_id,
         'notebook_id', created_exam.notebook_id,
@@ -325,6 +443,8 @@ $$;
 
 REVOKE ALL ON FUNCTION public.persist_generated_flashcards(UUID, UUID, JSONB)
 FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.list_notebook_flashcards(UUID, UUID, INTEGER, INTEGER)
+FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.persist_generated_exam(
     UUID, UUID, TEXT, TEXT, JSONB
 ) FROM PUBLIC, anon, authenticated;
@@ -332,6 +452,8 @@ REVOKE ALL ON FUNCTION public.append_conversation_message(UUID, UUID, TEXT, TEXT
 FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.persist_generated_flashcards(UUID, UUID, JSONB)
+TO service_role;
+GRANT EXECUTE ON FUNCTION public.list_notebook_flashcards(UUID, UUID, INTEGER, INTEGER)
 TO service_role;
 GRANT EXECUTE ON FUNCTION public.persist_generated_exam(
     UUID, UUID, TEXT, TEXT, JSONB

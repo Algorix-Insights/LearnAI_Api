@@ -5,6 +5,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS attempts_one_active_per_user_exam
 ON public.attempts (exam_id, user_id)
 WHERE status = 'in_progress';
 
+ALTER TABLE public.attempts
+ADD COLUMN IF NOT EXISTS attempt_number INTEGER;
+
+WITH ranked_attempts AS (
+    SELECT
+        attempt.attempt_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY attempt.exam_id, attempt.user_id
+            ORDER BY
+                COALESCE(attempt.started_at, attempt.created_at),
+                attempt.created_at,
+                attempt.attempt_id
+        )::INTEGER AS attempt_number
+    FROM public.attempts AS attempt
+)
+UPDATE public.attempts AS attempt
+SET attempt_number = ranked.attempt_number
+FROM ranked_attempts AS ranked
+WHERE ranked.attempt_id = attempt.attempt_id
+  AND attempt.attempt_number IS NULL;
+
+ALTER TABLE public.attempts
+ALTER COLUMN attempt_number SET NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'attempts_number_limit_check'
+          AND conrelid = 'public.attempts'::regclass
+    ) THEN
+        -- NOT VALID preserves legacy histories over the new limit while still
+        -- enforcing 1..5 for every attempt created after this migration.
+        ALTER TABLE public.attempts
+        ADD CONSTRAINT attempts_number_limit_check
+        CHECK (attempt_number BETWEEN 1 AND 5) NOT VALID;
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS attempts_user_exam_number_uidx
+ON public.attempts (exam_id, user_id, attempt_number);
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -24,6 +67,111 @@ REVOKE INSERT, UPDATE, DELETE ON public.attempts FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.user_answers FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.attempts TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_answers TO service_role;
+
+CREATE OR REPLACE FUNCTION public.start_exam_attempt(
+    p_exam_id UUID,
+    p_user_id UUID
+)
+RETURNS SETOF public.attempts
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_existing public.attempts%ROWTYPE;
+    v_attempt_count INTEGER;
+    v_attempt_number INTEGER;
+BEGIN
+    IF p_exam_id IS NULL
+       OR p_user_id IS NULL
+       OR NOT EXISTS (
+           SELECT 1
+           FROM public.users AS actor
+           JOIN public.exams AS exam ON exam.exam_id = p_exam_id
+           JOIN public.notebooks AS notebook
+             ON notebook.notebook_id = exam.notebook_id
+           WHERE actor.user_id = p_user_id
+             AND actor.status = 'active'
+             AND exam.status = 'active'
+             AND notebook.status = 'active'
+             AND (
+                 EXISTS (
+                     SELECT 1
+                     FROM public.personal_notebooks AS personal
+                     WHERE personal.user_id = p_user_id
+                       AND personal.notebook_id = exam.notebook_id
+                 )
+                 OR EXISTS (
+                     SELECT 1
+                     FROM public.room_notebooks AS room_notebook
+                     JOIN public.members_rooms AS membership
+                       ON membership.room_id = room_notebook.room_id
+                     JOIN public.study_members AS member
+                       ON member.member_id = membership.member_id
+                     WHERE room_notebook.notebook_id = exam.notebook_id
+                       AND member.user_id = p_user_id
+                 )
+             )
+       ) THEN
+        RAISE EXCEPTION 'resource not found' USING ERRCODE = 'P0002';
+    END IF;
+
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended(
+            p_user_id::TEXT || ':' || p_exam_id::TEXT,
+            0
+        )
+    );
+
+    SELECT attempt.*
+    INTO v_existing
+    FROM public.attempts AS attempt
+    WHERE attempt.exam_id = p_exam_id
+      AND attempt.user_id = p_user_id
+      AND attempt.status = 'in_progress'
+    LIMIT 1;
+
+    IF FOUND THEN
+        RETURN NEXT v_existing;
+        RETURN;
+    END IF;
+
+    SELECT
+        COUNT(*)::INTEGER,
+        COALESCE(MAX(attempt.attempt_number), 0) + 1
+    INTO v_attempt_count, v_attempt_number
+    FROM public.attempts AS attempt
+    WHERE attempt.exam_id = p_exam_id
+      AND attempt.user_id = p_user_id;
+
+    IF v_attempt_count >= 5 OR v_attempt_number > 5 THEN
+        RAISE EXCEPTION 'attempt_limit_reached'
+            USING ERRCODE = 'P0001';
+    END IF;
+
+    RETURN QUERY
+    INSERT INTO public.attempts (
+        exam_id,
+        user_id,
+        attempt_number,
+        status,
+        started_at
+    )
+    VALUES (
+        p_exam_id,
+        p_user_id,
+        v_attempt_number,
+        'in_progress',
+        statement_timestamp()
+    )
+    RETURNING *;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.start_exam_attempt(UUID, UUID)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.start_exam_attempt(UUID, UUID)
+TO service_role;
 
 CREATE OR REPLACE FUNCTION public.submit_exam_attempt_answer(
     p_attempt_id UUID,

@@ -35,6 +35,11 @@ class FakeUsers:
         return self.user
 
 
+class FailingUsers(FakeUsers):
+    async def update(self, request) -> dict[str, Any] | None:
+        raise RuntimeError("database unavailable")
+
+
 class FakeStorage:
     def __init__(self) -> None:
         self.uploads: list[str] = []
@@ -115,3 +120,36 @@ def test_profile_image_processor_uses_magic_bytes_not_only_claimed_mime() -> Non
 
     assert content.startswith(b"\x89PNG")
     assert content_type == "image/png"
+
+
+def test_profile_paths_are_versioned_so_failed_replacement_is_compensable() -> None:
+    processor = ProfileImageProcessor()
+
+    first = processor.storage_path(USER_ID, "image/png")
+    second = processor.storage_path(USER_ID, "image/png")
+
+    assert first != second
+    assert first.startswith(f"{USER_ID}/profile-")
+    assert first.endswith(".png")
+
+
+def test_failed_profile_metadata_update_deletes_only_new_object() -> None:
+    users = FailingUsers()
+    storage = FakeStorage()
+    use_case = UserProfileUseCase(
+        users,
+        storage,
+        Settings(),
+        image_processor=FakeImageProcessor(),
+    )
+    file = UploadFile(
+        filename="avatar.jpg",
+        file=BytesIO(b"jpeg"),
+        headers={"content-type": "image/jpeg"},
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        asyncio.run(use_case.upload_photo(user_id=USER_ID, file=file))
+
+    assert users.user["profile_image_path"] == "old/profile.png"
+    assert storage.deleted == [f"{USER_ID}/profile.jpg"]
