@@ -38,3 +38,6 @@ migrations/versions/*.pyc
 # Project-specific
 *.sqlite3
 *.db
+
+
+graphify-out/

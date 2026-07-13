@@ -1,12 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_questions_use_case
 from app.application.usecases import QuestionUseCase
-from app.domain.schemas.entities import QuestionCreate, QuestionUpdate
+from app.domain.schemas.entities import QuestionUpdate
 from app.domain.schemas.resources.questions import (
-    QuestionCreateRequest,
     QuestionDeleteRequest,
     QuestionListResponse,
     QuestionListRequest,
@@ -24,14 +23,6 @@ async def list_questions(
     use_case: Annotated[QuestionUseCase, Depends(get_questions_use_case)],
 ) -> QuestionListResponse:
     return await use_case.list(request)
-
-
-@router.post("", response_model=QuestionResponse, status_code=status.HTTP_201_CREATED)
-async def create_question(
-    payload: QuestionCreate,
-    use_case: Annotated[QuestionUseCase, Depends(get_questions_use_case)],
-) -> QuestionResponse:
-    return await use_case.create(QuestionCreateRequest(payload=payload))
 
 
 @router.get("/{question_id}", response_model=QuestionResponse)

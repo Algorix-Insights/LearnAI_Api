@@ -7,45 +7,50 @@ from app.domain.schemas.resources.users import UserRead
 class AuthRegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str
-    password: str | None = Field(default=None, min_length=6)
-    name: str
-    last_name: str
+    email: str = Field(min_length=3, max_length=320)
+    password: str | None = Field(default=None, min_length=8, max_length=256)
+    name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    captcha_token: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 class AuthLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str
-    password: str
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=256)
+    captcha_token: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 class AuthOtpRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str
-    should_create_user: bool = True
+    email: str = Field(min_length=3, max_length=320)
+    # Account creation belongs to /auth/register, which also captures profile data.
+    should_create_user: Literal[False] = False
+    captcha_token: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 class AuthVerifyOtpRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str
-    token: str
-    type: Literal["magiclink", "signup", "recovery", "email", "invite"] = "magiclink"
+    email: str = Field(min_length=3, max_length=320)
+    token: str = Field(min_length=6, max_length=2048)
+    type: Literal["email", "recovery", "invite", "email_change"] = "email"
+    captcha_token: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 class AuthForgotPasswordRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str
-    redirect_to: str | None = None
+    email: str = Field(min_length=3, max_length=320)
+    captcha_token: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 class AuthUpdatePasswordRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=8, max_length=256)
 
 
 class AuthTokenRead(BaseModel):

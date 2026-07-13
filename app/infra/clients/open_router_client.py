@@ -118,18 +118,21 @@ class OpenRouterClient:
             response = open_router.chat.send(**payload)
             if payload.get("stream"):
                 with response as event_stream:
-                    return cast(list[OpenRouterStreamEvent], list(event_stream))
-            return cast(JsonObject, response)
+                    return [
+                        cast(OpenRouterStreamEvent, self._json_object(event))
+                        for event in event_stream
+                    ]
+            return self._json_object(response)
 
     def _embeddings(self, payload: EmbeddingPayload) -> OpenRouterEmbeddingResponse:
         with self._open_router() as open_router:
-            return cast(JsonObject, open_router.embeddings.generate(**payload))
+            return self._json_object(open_router.embeddings.generate(**payload))
 
     def _embedding_models(
         self, payload: EmbeddingModelsPayload
     ) -> OpenRouterEmbeddingModelsResponse:
         with self._open_router() as open_router:
-            return cast(JsonObject, open_router.embeddings.list_models(**payload))
+            return self._json_object(open_router.embeddings.list_models(**payload))
 
     def _open_router(self) -> AbstractContextManager[_OpenRouterSdk]:
         if not self.config.api_key:
@@ -160,3 +163,21 @@ class OpenRouterClient:
     def _clean_payload(self, payload: Mapping[str, Any]) -> PayloadT:
         cleaned = {key: value for key, value in payload.items() if value is not None}
         return cast(PayloadT, cleaned)
+
+    def _json_object(self, value: object) -> JsonObject:
+        converted = self._json_value(value)
+        if not isinstance(converted, Mapping):
+            raise OpenRouterClientError("OpenRouter devolvio una respuesta no estructurada.")
+        return cast(JsonObject, converted)
+
+    def _json_value(self, value: object) -> JsonValue:
+        model_dump = getattr(value, "model_dump", None)
+        if callable(model_dump):
+            return self._json_value(model_dump(mode="json"))
+        if isinstance(value, Mapping):
+            return {str(key): self._json_value(item) for key, item in value.items()}
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            return [self._json_value(item) for item in value]
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        raise OpenRouterClientError("OpenRouter devolvio un valor no serializable.")

@@ -22,7 +22,8 @@ class NotebookRepository(BaseSupabaseRepository):
 
     async def create(self, request: NotebookRepositoryCreateRequest) -> dict:
         payload = request.payload.model_dump(exclude_unset=True, mode="json")
-        return await self._create(self.table_name, payload)
+        params = {f"p_{key}": value for key, value in payload.items()}
+        return await self._rpc_first("create_personal_notebook", params, "crear")
 
     async def update(self, request: NotebookRepositoryUpdateRequest) -> dict | None:
         payload = request.payload.model_dump(exclude_unset=True, mode="json")

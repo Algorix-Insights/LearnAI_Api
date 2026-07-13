@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.core.exceptions import AuthError, UnauthorizedError
+from app.core.exceptions import AuthError, ForbiddenError, UnauthorizedError
 from app.domain.interfaces.auth import AuthRepository
 from app.domain.interfaces.users import UserRepository
 from app.domain.schemas.entities import UserCreate
@@ -67,14 +67,9 @@ class AuthUseCase:
 
         user_id_str = user_dict.get("id")
         if not user_id_str:
-            metadata = user_dict.get("user_metadata", {})
-            user_read = UserRead(
-                user_id="00000000-0000-0000-0000-000000000000",
-                name=metadata.get("name", "Usuario"),
-                last_name=metadata.get("last_name", "Supabase"),
-                email=user_dict.get("email", ""),
-                status="pending",
-            )
+            # Passwordless registration only initiates an email challenge. Until
+            # Supabase verifies it there is no trustworthy user identity to expose.
+            user_read = None
         else:
             user_read = await self._sync_user_profile(user_dict)
 
@@ -97,9 +92,13 @@ class AuthUseCase:
         try:
             existing = await self.user_repository.get(UserRepositoryGetRequest(user_id=user_id))
             if existing is not None:
+                if existing.get("status", "active") != "active":
+                    raise ForbiddenError()
                 return self._to_user_read(existing)
-        except Exception:
-            pass
+        except ForbiddenError:
+            raise
+        except Exception as exc:
+            raise AuthError("No se pudo consultar el perfil autenticado.") from exc
 
         metadata = user_dict.get("user_metadata", {})
         name = metadata.get("name", "Usuario")
@@ -111,22 +110,16 @@ class AuthUseCase:
             name=name,
             last_name=last_name,
             email=email,
-            hash_password=None,
             streak=0,
             status="active",
         )
         try:
             created = await self.user_repository.create(UserRepositoryCreateRequest(payload=payload))
             return self._to_user_read(created)
-        except Exception:
-            return UserRead(
-                user_id=user_id,
-                name=name,
-                last_name=last_name,
-                email=email,
-                status="active",
-            )
+        except Exception as exc:
+            raise AuthError("No se pudo sincronizar el perfil autenticado.") from exc
 
     def _to_user_read(self, item: dict) -> UserRead:
+        # Defensive compatibility while migration 007 removes the legacy column.
         safe_dict = {key: value for key, value in item.items() if key != "hash_password"}
         return UserRead.model_validate(safe_dict)

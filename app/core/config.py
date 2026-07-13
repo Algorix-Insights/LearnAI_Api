@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     api_v1_prefix: str = "/api/v1"
     supabase_url: str | None = None
+    supabase_publishable_key: str | None = None
     supabase_secret_key: str | None = None
+    auth_recovery_redirect_url: str | None = None
     openrouter_api_key: str | None = None
     openrouter_http_referer: str | None = None
     openrouter_app_title: str = "LearnIA API"
@@ -25,6 +27,7 @@ class Settings(BaseSettings):
     documents_bucket: str = "documents"
     profile_bucket: str = "profile"
     rag_match_limit: int = 6
+    max_request_body_bytes: int = 12 * 1024 * 1024
 
 
 @lru_cache

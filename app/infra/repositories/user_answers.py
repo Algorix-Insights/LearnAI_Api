@@ -11,12 +11,23 @@ from app.infra.repositories.base import BaseSupabaseRepository
 class UserAnswerRepository(BaseSupabaseRepository):
     table_name = "user_answers"
     id_field = "answer_id"
+    safe_columns = "answer_id,attempt_id,question_id,selected_option_id,answer_text,created_at"
 
     async def list(self, request: UserAnswerRepositoryListRequest) -> list[dict]:
-        return await self._list(self.table_name, request.limit, request.offset)
+        return await self._list(
+            self.table_name,
+            request.limit,
+            request.offset,
+            columns=self.safe_columns,
+        )
 
     async def get(self, request: UserAnswerRepositoryGetRequest) -> dict | None:
-        return await self._get(self.table_name, self.id_field, str(request.answer_id))
+        return await self._get(
+            self.table_name,
+            self.id_field,
+            str(request.answer_id),
+            columns=self.safe_columns,
+        )
 
     async def create(self, request: UserAnswerRepositoryCreateRequest) -> dict:
         payload = request.payload.model_dump(exclude_unset=True, mode="json")

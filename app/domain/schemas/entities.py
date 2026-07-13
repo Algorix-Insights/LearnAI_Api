@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictSchema(BaseModel):
@@ -20,10 +20,9 @@ class HealthUpdate(StrictSchema):
 
 class UserCreate(StrictSchema):
     user_id: UUID | None = None
-    name: str
-    last_name: str
-    email: str
-    hash_password: str | None = None
+    name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=320)
     streak: int = Field(default=0, ge=0)
     status: Literal["active", "inactive", "suspended"] = "active"
     last_login: datetime | None = None
@@ -33,10 +32,9 @@ class UserCreate(StrictSchema):
 
 
 class UserUpdate(StrictSchema):
-    name: str | None = None
-    last_name: str | None = None
-    email: str | None = None
-    hash_password: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    last_name: str | None = Field(default=None, min_length=1, max_length=100)
+    email: str | None = Field(default=None, min_length=3, max_length=320)
     streak: int | None = Field(default=None, ge=0)
     status: Literal["active", "inactive", "suspended"] | None = None
     last_login: datetime | None = None
@@ -46,39 +44,30 @@ class UserUpdate(StrictSchema):
 
 
 class NotebookCreate(StrictSchema):
-    name: str
-    description: str | None = None
-    grade: int = Field(default=0, ge=0)
-    summary: str | None = None
-    is_dominated: bool = False
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+    summary: str | None = Field(default=None, max_length=10000)
     is_favorite: bool = False
-    status: Literal["active", "archived", "deleted"] = "active"
-    spent_time: int = Field(default=0, ge=0)
-    last_seen_at: datetime | None = None
     due_date: datetime | None = None
 
 
 class NotebookUpdate(StrictSchema):
-    name: str | None = None
-    description: str | None = None
-    grade: int | None = Field(default=None, ge=0)
-    summary: str | None = None
-    is_dominated: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+    summary: str | None = Field(default=None, max_length=10000)
     is_favorite: bool | None = None
     status: Literal["active", "archived", "deleted"] | None = None
-    spent_time: int | None = Field(default=None, ge=0)
-    last_seen_at: datetime | None = None
     due_date: datetime | None = None
 
 
 class RoomCreate(StrictSchema):
-    name: str
-    description: str | None = None
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
 
 
 class RoomUpdate(StrictSchema):
-    name: str | None = None
-    description: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
 
 
 class StudyMemberCreate(StrictSchema):
@@ -87,7 +76,6 @@ class StudyMemberCreate(StrictSchema):
 
 
 class StudyMemberUpdate(StrictSchema):
-    user_id: UUID | None = None
     nickname: str | None = None
 
 
@@ -129,7 +117,6 @@ class ExamCreate(StrictSchema):
 
 
 class ExamUpdate(StrictSchema):
-    notebook_id: UUID | None = None
     name: str | None = None
     description: str | None = None
     status: Literal["active", "archived", "deleted"] | None = None
@@ -175,7 +162,6 @@ class QuestionOptionCreate(StrictSchema):
 
 
 class QuestionOptionUpdate(StrictSchema):
-    question_id: UUID | None = None
     option_text: str | None = None
     is_correct: bool | None = None
     option_order: int | None = Field(default=None, gt=0)
@@ -312,8 +298,12 @@ class DocumentChunkUpdate(StrictSchema):
 
 
 class TagCreate(StrictSchema):
-    name: str = Field(max_length=100)
-    status: Literal["active", "inactive"] = "active"
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class TagUpdate(StrictSchema):

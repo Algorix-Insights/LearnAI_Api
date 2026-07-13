@@ -10,13 +10,12 @@ class DocumentChunkSchema(BaseModel):
 
 
 class DocumentChunkRead(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="ignore")
 
     chunk_id: UUID | None = None
     document_id: UUID | None = None
     chunk_index: int | None = None
     content: str | None = None
-    embedding: list[float] | None = None
     model: str | None = None
     token_count: int | None = None
     created_at: str | None = None

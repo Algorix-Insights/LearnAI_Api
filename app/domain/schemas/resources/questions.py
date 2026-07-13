@@ -10,12 +10,13 @@ class QuestionSchema(BaseModel):
 
 
 class QuestionRead(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    # Internal answer keys may exist on repository rows, but are never serialized
+    # through the student-facing API model.
+    model_config = ConfigDict(extra="ignore")
 
     question_id: UUID | None = None
     type: str | None = None
     statement: str | None = None
-    expected_answer: str | None = None
     created_at: str | None = None
 
 
