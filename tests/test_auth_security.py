@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from supabase_auth.errors import AuthApiError
 
+from app.api import dependencies as api_dependencies
 from app.api.auth_rate_limit import InMemoryRateLimiter, RateLimitBucket
 from app.core.exceptions import AuthRateLimitError
 from app.domain.schemas.resources.auth import (
@@ -84,6 +85,34 @@ def test_provider_rate_limit_is_safe_429_with_retry_header() -> None:
     assert response.status_code == 429
     assert response.headers["retry-after"] == "60"
     assert "provider-only-detail" not in json.loads(response.body)["detail"]
+
+
+def test_auth_client_configuration_failure_is_safe_503(monkeypatch) -> None:
+    def fail_auth_repository() -> None:
+        raise RuntimeError("missing production configuration")
+
+    monkeypatch.setattr(
+        api_dependencies,
+        "SupabaseAuthRepository",
+        fail_auth_repository,
+    )
+
+    previous_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides.clear()
+    try:
+        response = TestClient(app).post(
+            "/api/v1/auth/login",
+            json={"email": "user@example.test", "password": "valid-password"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Servicio de autenticación no disponible temporalmente."
+    }
+    assert "missing production configuration" not in response.text
 
 
 def test_captcha_is_forwarded_and_recovery_redirect_is_server_controlled() -> None:

@@ -36,8 +36,11 @@ Las respuestas de un recurso usan `{ "data": ... }`. Los listados agregan `limit
 
 ### OTP, registro passwordless y SMTP
 
-- `POST /api/v1/auth/otp` admite una solicitud por correo cada 60 segundos. Ante `429`, conserva el estado del formulario y respeta `Retry-After` antes de habilitar **Reenviar**.
-- Configurar SMTP propio cambia el transporte del correo, pero no elimina los límites de Supabase Auth. Revisa también **Authentication → Rate Limits** en el proyecto.
+- El rate limit local de autenticación está desactivado por defecto con
+  `AUTH_RATE_LIMIT_ENABLED=false`. Puede reactivarse explícitamente en entornos que tengan un
+  proxy o almacenamiento compartido para los contadores.
+- Configurar SMTP propio cambia el transporte del correo, pero no elimina los límites del
+  proveedor Supabase Auth. Un `429` emitido por Supabase todavía debe respetar `Retry-After`.
 - Un registro sin `password` solo inicia la verificación. La respuesta contiene `access_token: ""` y `user: null`; el usuario y la sesión aparecen después de completar el Magic Link/OTP.
 - El frontend puede enviar `captcha_token` en registro, login, OTP, verificación y recuperación cuando CAPTCHA esté habilitado.
 
