@@ -7,6 +7,7 @@ from app.domain.schemas.resources.notebooks import (
     NotebookTagRepositoryCreateRequest,
     NotebookTagRepositoryDeleteRequest,
 )
+from app.core.exceptions import RepositoryError, ResourceNotFoundError
 from app.infra.repositories.base import BaseSupabaseRepository
 
 
@@ -28,9 +29,7 @@ class NotebookRepository(BaseSupabaseRepository):
     async def update(self, request: NotebookRepositoryUpdateRequest) -> dict | None:
         payload = request.payload.model_dump(exclude_unset=True, mode="json")
         payload["updated_at"] = request.updated_at.isoformat()
-        return await self._update(
-            self.table_name, self.id_field, str(request.notebook_id), payload
-        )
+        return await self._update(self.table_name, self.id_field, str(request.notebook_id), payload)
 
     async def delete(self, request: NotebookRepositoryDeleteRequest) -> dict | None:
         return await self._delete(self.table_name, self.id_field, str(request.notebook_id))
@@ -40,7 +39,19 @@ class NotebookTagRepository(BaseSupabaseRepository):
     table_name = "notebook_tags"
 
     async def create(self, request: NotebookTagRepositoryCreateRequest) -> dict:
-        return await self._create(self.table_name, request.model_dump(mode="json"))
+        payload = request.model_dump(mode="json")
+        try:
+            response = await self._execute(self.client.table(self.table_name).insert(payload))
+        except Exception as exc:
+            code = getattr(exc, "code", None)
+            if code == "23505":
+                # The relationship already exists. Treat retries as idempotent.
+                return payload
+            if code in {"23503", "42501"}:
+                # Do not reveal whether the notebook/tag exists when RLS denies it.
+                raise ResourceNotFoundError() from exc
+            raise RepositoryError("crear") from exc
+        return self._first(response.data) or payload
 
     async def delete(self, request: NotebookTagRepositoryDeleteRequest) -> dict | None:
         return await self._delete_by_filter(self.table_name, request.model_dump(mode="json"))
