@@ -58,7 +58,7 @@ class OpenRouterAnswerVerifier(OpenAnswerVerifier):
             model=self.model,
             messages=messages,
             temperature=0,
-            max_tokens=300,
+            max_tokens=10000,
             response_format={
                 "type": "json_schema",
                 "json_schema": {
