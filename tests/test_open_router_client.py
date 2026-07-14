@@ -2,9 +2,15 @@ import asyncio
 from contextlib import AbstractContextManager
 from typing import Any
 
+import httpx
+from openrouter.errors import (
+    PaymentRequiredResponseError,
+    PaymentRequiredResponseErrorData,
+)
 import pytest
 from pydantic import BaseModel
 
+from app.core.exceptions import AiServiceUnavailableError
 from app.infra.clients import OpenRouterClient, OpenRouterClientError
 
 
@@ -82,6 +88,28 @@ class FakePydanticOpenRouter(FakeOpenRouter):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.chat = FakePydanticChat()
+
+
+class FakePaymentRequiredChat:
+    def send(self, **kwargs: Any) -> None:
+        del kwargs
+        data = PaymentRequiredResponseErrorData(
+            error={
+                "code": 402,
+                "message": "secret credits; can only afford 2116 tokens",
+            }
+        )
+        response = httpx.Response(
+            402,
+            request=httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions"),
+        )
+        raise PaymentRequiredResponseError(data, response)
+
+
+class FakePaymentRequiredOpenRouter(FakeOpenRouter):
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.chat = FakePaymentRequiredChat()
 
 
 def test_open_router_client_sends_chat_with_sdk() -> None:
@@ -167,3 +195,17 @@ def test_open_router_client_serializes_pydantic_sdk_response() -> None:
     )
 
     assert response == {"choices": [{"message": {"content": "respuesta"}}]}
+
+
+def test_open_router_client_maps_payment_required_to_safe_service_error() -> None:
+    client = OpenRouterClient("test-key", sdk_factory=FakePaymentRequiredOpenRouter)
+
+    with pytest.raises(AiServiceUnavailableError) as captured:
+        run_async(client.chat_completion(messages=[{"role": "user", "content": "Hola"}]))
+
+    error = captured.value
+    assert error.status_code == 503
+    assert error.message == "Servicio de IA no disponible temporalmente."
+    assert isinstance(error.__cause__, PaymentRequiredResponseError)
+    assert "credits" not in error.message
+    assert "2116" not in error.message

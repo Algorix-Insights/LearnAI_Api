@@ -41,6 +41,12 @@ from app.infra.repositories.rag_generation import RagGenerationRepository
 
 QuestionDraft = MultipleChoiceQuestionDraft | TrueFalseQuestionDraft | OpenQuestionDraft
 
+EXAM_BASE_OUTPUT_TOKENS = 500
+EXAM_TRUE_FALSE_OUTPUT_TOKENS = 80
+EXAM_MULTIPLE_CHOICE_OUTPUT_TOKENS = 140
+EXAM_OPEN_OUTPUT_TOKENS = 120
+MAX_EXAM_OUTPUT_TOKENS = 2_000
+
 
 class RagStudyMaterialWorkflow:
     """Generates and persists flashcards and exams from retrieved notebook sources."""
@@ -176,13 +182,13 @@ class RagStudyMaterialWorkflow:
             schema=ExamDraft,
             schema_name="notebook_exam",
             model=model,
-            max_tokens=10000,
+            max_tokens=self._exam_max_tokens(request),
             instruction=(
                 f"Genera un examen con exactamente {request.true_false_count} preguntas "
                 f"true_false, {request.multiple_choice_count} multiple_choice y "
                 f"{request.open_count} open. Usa indices de opcion basados en cero. "
                 "Las opciones incorrectas deben ser plausibles, pero inequívocamente falsas "
-                "segun el contexto."
+                "segun el contexto. Usa enunciados, opciones y respuestas breves."
             ),
             sources=sources,
         )
@@ -353,6 +359,16 @@ class RagStudyMaterialWorkflow:
         }
         if any(actual[question_type] != count for question_type, count in expected.items()):
             raise BadRequestError("El modelo no genero la mezcla de preguntas solicitada.")
+
+    @staticmethod
+    def _exam_max_tokens(request: ExamGenerationRequest) -> int:
+        estimated = (
+            EXAM_BASE_OUTPUT_TOKENS
+            + request.true_false_count * EXAM_TRUE_FALSE_OUTPUT_TOKENS
+            + request.multiple_choice_count * EXAM_MULTIPLE_CHOICE_OUTPUT_TOKENS
+            + request.open_count * EXAM_OPEN_OUTPUT_TOKENS
+        )
+        return min(MAX_EXAM_OUTPUT_TOKENS, estimated)
 
     @staticmethod
     def _required_uuid(data: Mapping[str, Any], field: str) -> UUID:

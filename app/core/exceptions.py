@@ -68,3 +68,11 @@ class AuthRateLimitError(ApiError):
 class AuthUnavailableError(ApiError):
     def __init__(self) -> None:
         super().__init__(503, "Servicio de autenticación no disponible temporalmente.")
+
+
+class AiServiceUnavailableError(ApiError):
+    def __init__(
+        self,
+        message: str = "Servicio de IA no disponible temporalmente.",
+    ) -> None:
+        super().__init__(503, message)

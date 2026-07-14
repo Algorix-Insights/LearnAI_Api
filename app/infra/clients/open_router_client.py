@@ -19,6 +19,7 @@ from app.application.interfaces import (
     OpenRouterMessage,
     OpenRouterStreamEvent,
 )
+from app.core.exceptions import AiServiceUnavailableError
 
 SdkFactory = Callable[..., AbstractContextManager[Any]]
 PayloadT = TypeVar("PayloadT", bound=Mapping[str, Any])
@@ -114,25 +115,40 @@ class OpenRouterClient:
         return await asyncio.to_thread(self._embedding_models, payload)
 
     def _chat_completion(self, payload: ChatCompletionPayload) -> OpenRouterChatResponse:
-        with self._open_router() as open_router:
-            response = open_router.chat.send(**payload)
-            if payload.get("stream"):
-                with response as event_stream:
-                    return [
-                        cast(OpenRouterStreamEvent, self._json_object(event))
-                        for event in event_stream
-                    ]
-            return self._json_object(response)
+        try:
+            with self._open_router() as open_router:
+                response = open_router.chat.send(**payload)
+                if payload.get("stream"):
+                    with response as event_stream:
+                        return [
+                            cast(OpenRouterStreamEvent, self._json_object(event))
+                            for event in event_stream
+                        ]
+                return self._json_object(response)
+        except (AiServiceUnavailableError, OpenRouterClientError):
+            raise
+        except Exception as exc:
+            raise AiServiceUnavailableError() from exc
 
     def _embeddings(self, payload: EmbeddingPayload) -> OpenRouterEmbeddingResponse:
-        with self._open_router() as open_router:
-            return self._json_object(open_router.embeddings.generate(**payload))
+        try:
+            with self._open_router() as open_router:
+                return self._json_object(open_router.embeddings.generate(**payload))
+        except (AiServiceUnavailableError, OpenRouterClientError):
+            raise
+        except Exception as exc:
+            raise AiServiceUnavailableError() from exc
 
     def _embedding_models(
         self, payload: EmbeddingModelsPayload
     ) -> OpenRouterEmbeddingModelsResponse:
-        with self._open_router() as open_router:
-            return self._json_object(open_router.embeddings.list_models(**payload))
+        try:
+            with self._open_router() as open_router:
+                return self._json_object(open_router.embeddings.list_models(**payload))
+        except (AiServiceUnavailableError, OpenRouterClientError):
+            raise
+        except Exception as exc:
+            raise AiServiceUnavailableError() from exc
 
     def _open_router(self) -> AbstractContextManager[_OpenRouterSdk]:
         if not self.config.api_key:
