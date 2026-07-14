@@ -538,9 +538,16 @@ usuario sin distinguir mayúsculas, minúsculas ni espacios exteriores. Un dupli
 
 ## RAG: fuentes y chat
 
-### Cuotas durables de IA
+### Cuotas durables de IA (opcionales)
 
-Las operaciones que consumen proveedores de IA tienen cuotas por usuario, persistidas en PostgreSQL. Se comparten entre instancias del API y no se reinician al desplegar o reiniciar el servidor.
+Para el demo, las cuotas de operaciones de IA están desactivadas por defecto con
+`AI_USAGE_QUOTA_ENABLED=false`; chat, embeddings, flashcards, exámenes y calificación abierta
+no se bloquean por una ventana horaria o diaria. Las demás reglas de acceso y validación siguen
+activas.
+
+Se pueden reactivar con `AI_USAGE_QUOTA_ENABLED=true`. En ese modo, las cuotas por usuario se
+persisten en PostgreSQL, se comparten entre instancias del API y no se reinician al desplegar o
+reiniciar el servidor:
 
 | Operación            | Endpoint principal                                    | Por hora móvil |   Por día UTC |
 | --------------------- | ----------------------------------------------------- | --------------: | -------------: |
@@ -550,7 +557,7 @@ Las operaciones que consumen proveedores de IA tienen cuotas por usuario, persis
 | Examen                | `POST /notebooks/{notebook_id}/exams/generate`      |               5 |             15 |
 | Calificación abierta | `POST /attempts/{attempt_id}/finish`                |   30 respuestas | 100 respuestas |
 
-Cuando se alcanza una cuota, el API responde `429`:
+Con las cuotas activadas, cuando se alcanza una de ellas el API responde `429`:
 
 ```json
 {
@@ -558,7 +565,9 @@ Cuando se alcanza una cuota, el API responde `429`:
 }
 ```
 
-Respeta `Retry-After: 3600`, deshabilita temporalmente la acción en UI y evita ciclos de reintento automático. La reserva se hace antes de llamar al proveedor, por lo que una operación aceptada puede contar aunque el proveedor falle después.
+El cliente debe respetar `Retry-After`, deshabilitar temporalmente la acción en UI y evitar ciclos
+de reintento automático. La reserva se hace antes de llamar al proveedor, por lo que una operación
+aceptada puede contar aunque el proveedor falle después.
 
 ### Subir una fuente al cuaderno
 
