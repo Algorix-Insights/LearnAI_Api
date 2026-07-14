@@ -32,9 +32,10 @@ from app.application.usecases.user_profile import UserProfileUseCase
 from app.application.usecases.user_statistics import UserStatisticsUseCase
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AuthUnavailableError, UnauthorizedError
+from app.application.interfaces import AiGateway
 from app.domain.schemas.resources.users import UserRead
 from app.infra.agents.answer_verifier import OpenRouterAnswerVerifier
-from app.infra.clients import OpenRouterClient
+from app.infra.clients import GeminiClient, OpenRouterClient
 from app.infra.db.supabase import (
     create_supabase_user_client,
     get_supabase_admin_client,
@@ -145,9 +146,9 @@ def get_exam_attempt_workflow_use_case() -> ExamAttemptWorkflowUseCase:
     settings = get_settings()
     admin = get_supabase_admin_client()
     verifier = None
-    if settings.openrouter_api_key:
+    if (settings.llm_provider.lower() == "gemini" and settings.gemini_api_key) or settings.openrouter_api_key:
         verifier = OpenRouterAnswerVerifier(
-            _openrouter_client(), model=settings.openrouter_chat_model
+            _ai_gateway_client(), model=settings.active_chat_model
         )
     return ExamAttemptWorkflowUseCase(
         AttemptRepository(admin),
@@ -274,11 +275,18 @@ def get_rag_use_case() -> RagUseCase:
         search=RagSearchRepository(admin),
         access=NotebookAccessRepository(admin),
         storage=SupabaseStorage(admin),
-        llm=_openrouter_client(),
+        llm=_ai_gateway_client(),
         settings=settings,
         generation=RagGenerationRepository(admin),
         usage=_ai_usage_repository(admin, settings),
     )
+
+
+def _ai_gateway_client() -> AiGateway:
+    settings = get_settings()
+    if settings.llm_provider.lower() == "gemini" and settings.gemini_api_key:
+        return GeminiClient(settings.gemini_api_key)
+    return _openrouter_client()
 
 
 def _openrouter_client() -> OpenRouterClient:

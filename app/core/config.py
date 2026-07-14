@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     auth_recovery_redirect_url: str | None = None
     auth_rate_limit_enabled: bool = False
     ai_usage_quota_enabled: bool = False
+    llm_provider: str = "openrouter"
+    gemini_api_key: str | None = None
+    gemini_chat_model: str = "gemini-2.5-flash"
+    gemini_embedding_model: str = "text-embedding-004"
     openrouter_api_key: str | None = None
     openrouter_http_referer: str | None = None
     openrouter_app_title: str = "LearnIA API"
@@ -42,6 +46,18 @@ class Settings(BaseSettings):
                 if origin.strip()
             )
         )
+
+    @property
+    def active_chat_model(self) -> str:
+        if self.llm_provider.lower() == "gemini":
+            return self.gemini_chat_model
+        return self.openrouter_chat_model
+
+    @property
+    def active_embedding_model(self) -> str:
+        if self.llm_provider.lower() == "gemini":
+            return self.gemini_embedding_model
+        return self.openrouter_embedding_model
 
 
 @lru_cache
