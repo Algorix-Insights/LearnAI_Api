@@ -6,8 +6,10 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_current_user, get_rag_use_case
 from app.api.v1.resources.rag import router
+from app.core.exceptions import AiServiceUnavailableError, ApiError
 from app.domain.schemas.resources.rag import ExamGenerationResponse
 from app.domain.schemas.resources.users import UserRead
+from app.main import api_error_handler
 
 
 NOTEBOOK_ID = UUID("00000000-0000-0000-0000-000000000010")
@@ -72,6 +74,12 @@ class FakeExamGenerationUseCase:
         )
 
 
+class UnavailableExamGenerationUseCase:
+    async def generate_exam(self, **kwargs):
+        del kwargs
+        raise AiServiceUnavailableError()
+
+
 def test_generate_exam_endpoint_returns_persisted_database_ids() -> None:
     use_case = FakeExamGenerationUseCase()
     app = FastAPI()
@@ -95,3 +103,28 @@ def test_generate_exam_endpoint_returns_persisted_database_ids() -> None:
     assert len(response.json()["data"]["questions"][0]["options"]) == 2
     assert use_case.calls[0]["notebook_id"] == NOTEBOOK_ID
     assert use_case.calls[0]["user_id"] == USER_ID
+
+
+def test_generate_exam_endpoint_returns_safe_503_when_ai_has_no_credit() -> None:
+    app = FastAPI()
+    app.add_exception_handler(ApiError, api_error_handler)
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_current_user] = lambda: UserRead(user_id=USER_ID)
+    app.dependency_overrides[get_rag_use_case] = UnavailableExamGenerationUseCase
+
+    with TestClient(
+        app,
+        headers={"Authorization": "Bearer test-token"},
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.post(
+            f"/api/v1/notebooks/{NOTEBOOK_ID}/exams/generate",
+            json={
+                "true_false_count": 1,
+                "multiple_choice_count": 0,
+                "open_count": 0,
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Servicio de IA no disponible temporalmente."}

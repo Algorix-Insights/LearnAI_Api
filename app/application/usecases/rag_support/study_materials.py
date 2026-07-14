@@ -188,7 +188,9 @@ class RagStudyMaterialWorkflow:
                 f"true_false, {request.multiple_choice_count} multiple_choice y "
                 f"{request.open_count} open. Usa indices de opcion basados en cero. "
                 "Las opciones incorrectas deben ser plausibles, pero inequívocamente falsas "
-                "segun el contexto. Usa enunciados, opciones y respuestas breves."
+                "segun el contexto. Limites: titulo de 12 palabras, descripcion de 30, "
+                "enunciados de 18, opciones de 8 y respuestas abiertas de 35. "
+                "Cada multiple_choice debe tener exactamente 4 opciones."
             ),
             sources=sources,
         )

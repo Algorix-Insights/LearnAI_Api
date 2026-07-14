@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.application.usecases.rag import RagUseCase
+from app.application.usecases.rag_support.study_materials import RagStudyMaterialWorkflow
 from app.core.config import Settings
 from app.core.exceptions import BadRequestError, ForbiddenError
 from app.domain.schemas.resources.rag import (
@@ -719,6 +720,7 @@ def test_rag_exam_endpoint_path_uses_atomic_persistence_payload() -> None:
     assert str(response.data.exam_id) == "30000000-0000-0000-0000-000000000001"
     assert len(response.data.questions) == 1
     assert len(response.data.questions[0].options) == 2
+    assert llm.chat_payloads[0]["max_tokens"] == 580
     assert generation.exam_calls == [
         {
             "actor_id": str(USER_ID),
@@ -750,6 +752,30 @@ def test_rag_exam_endpoint_path_uses_atomic_persistence_payload() -> None:
     assert use_case.questions.items == []
     assert use_case.exam_questions.items == []
     assert use_case.question_options.items == []
+
+
+@pytest.mark.parametrize(
+    ("true_false_count", "multiple_choice_count", "open_count", "expected"),
+    [
+        (1, 0, 0, 580),
+        (1, 1, 1, 840),
+        (3, 4, 3, 1660),
+        (0, 10, 10, 2000),
+    ],
+)
+def test_rag_exam_output_budget_scales_without_requesting_unaffordable_maximum(
+    true_false_count: int,
+    multiple_choice_count: int,
+    open_count: int,
+    expected: int,
+) -> None:
+    request = ExamGenerationRequest(
+        true_false_count=true_false_count,
+        multiple_choice_count=multiple_choice_count,
+        open_count=open_count,
+    )
+
+    assert RagStudyMaterialWorkflow._exam_max_tokens(request) == expected
 
 
 def test_rag_rejects_invalid_structured_output_before_persisting() -> None:
