@@ -697,8 +697,7 @@ def test_rag_generates_exam_with_all_question_types_and_persists_relations() -> 
                 visit(child)
 
     visit(schema)
-    assert all("oneOf" not in node for node in nodes)
-    assert all("discriminator" not in node for node in nodes)
+    assert all("discriminator" in node for node in nodes if "oneOf" in node)
     object_nodes = [node for node in nodes if node.get("type") == "object"]
     assert object_nodes
     assert all(node.get("additionalProperties") is False for node in object_nodes)
@@ -707,7 +706,8 @@ def test_rag_generates_exam_with_all_question_types_and_persists_relations() -> 
         for node in object_nodes
     )
     question_items = schema["properties"]["questions"]["items"]
-    assert len(question_items["anyOf"]) == 3
+    assert len(question_items["oneOf"]) == 3
+    assert question_items["discriminator"]["propertyName"] == "type"
 
 
 def test_rag_exam_endpoint_path_uses_atomic_persistence_payload() -> None:

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -237,9 +237,10 @@ class OpenQuestionDraft(RagSchema):
         return self
 
 
-ExamQuestionDraft = (
-    MultipleChoiceQuestionDraft | TrueFalseQuestionDraft | OpenQuestionDraft
-)
+ExamQuestionDraft = Annotated[
+    MultipleChoiceQuestionDraft | TrueFalseQuestionDraft | OpenQuestionDraft,
+    Field(discriminator="type"),
+]
 
 
 class ExamDraft(RagSchema):
