@@ -172,7 +172,6 @@ class RagStudyMaterialWorkflow:
             notebook_id=notebook_id,
             purpose="conceptos, relaciones y detalles evaluables para crear un examen",
         )
-        total = request.true_false_count + request.multiple_choice_count + request.open_count
         draft = await self.llm.structured_completion(
             schema=ExamDraft,
             schema_name="notebook_exam",

@@ -272,6 +272,9 @@ class FakeLlm:
 
 
 class FakeGeneration:
+    def __init__(self) -> None:
+        self.exam_calls: list[dict[str, Any]] = []
+
     async def list_flashcards(
         self, *, actor_id: str, notebook_id: str, limit: int, offset: int
     ) -> list[dict[str, Any]]:
@@ -286,6 +289,59 @@ class FakeGeneration:
                 "spent_time": 0,
             }
         ][offset : offset + limit]
+
+    async def persist_exam(
+        self,
+        *,
+        actor_id: str,
+        notebook_id: str,
+        name: str,
+        description: str | None,
+        questions: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        self.exam_calls.append(
+            {
+                "actor_id": actor_id,
+                "notebook_id": notebook_id,
+                "name": name,
+                "description": description,
+                "questions": questions,
+            }
+        )
+        persisted_questions = []
+        option_number = 0
+        for question_order, question in enumerate(questions, start=1):
+            persisted_options = []
+            for option in question["options"]:
+                option_number += 1
+                persisted_options.append(
+                    {
+                        "option_id": (
+                            f"40000000-0000-0000-0000-{option_number:012d}"
+                        ),
+                        "option_text": option["option_text"],
+                        "option_order": option["option_order"],
+                    }
+                )
+            persisted_questions.append(
+                {
+                    "question_id": (
+                        f"10000000-0000-0000-0000-{question_order:012d}"
+                    ),
+                    "type": question["type"],
+                    "statement": question["statement"],
+                    "question_order": question_order,
+                    "options": persisted_options,
+                }
+            )
+        return {
+            "exam_id": "30000000-0000-0000-0000-000000000001",
+            "notebook_id": notebook_id,
+            "name": name,
+            "description": description,
+            "status": "active",
+            "questions": persisted_questions,
+        }
 
 
 class FakeUsage:
@@ -627,6 +683,73 @@ def test_rag_generates_exam_with_all_question_types_and_persists_relations() -> 
         for question in response.data.questions
         for option in question.options
     )
+
+
+def test_rag_exam_endpoint_path_uses_atomic_persistence_payload() -> None:
+    llm = FakeLlm(
+        [
+            {
+                "title": "Examen de fotosintesis",
+                "description": "Evaluacion basada en las notas.",
+                "questions": [
+                    {
+                        "type": "true_false",
+                        "statement": "La fotosintesis usa luz.",
+                        "correct_answer": True,
+                    }
+                ],
+            }
+        ]
+    )
+    generation = FakeGeneration()
+    use_case, _, _, _ = make_use_case(llm, generation=generation)
+
+    response = run_async(
+        use_case.generate_exam(
+            notebook_id=NOTEBOOK_ID,
+            user_id=USER_ID,
+            request=ExamGenerationRequest(
+                true_false_count=1,
+                multiple_choice_count=0,
+                open_count=0,
+            ),
+        )
+    )
+
+    assert str(response.data.exam_id) == "30000000-0000-0000-0000-000000000001"
+    assert len(response.data.questions) == 1
+    assert len(response.data.questions[0].options) == 2
+    assert generation.exam_calls == [
+        {
+            "actor_id": str(USER_ID),
+            "notebook_id": str(NOTEBOOK_ID),
+            "name": "Examen de fotosintesis",
+            "description": "Evaluacion basada en las notas.",
+            "questions": [
+                {
+                    "type": "true_false",
+                    "statement": "La fotosintesis usa luz.",
+                    "expected_answer": None,
+                    "options": [
+                        {
+                            "option_text": "Verdadero",
+                            "is_correct": True,
+                            "option_order": 1,
+                        },
+                        {
+                            "option_text": "Falso",
+                            "is_correct": False,
+                            "option_order": 2,
+                        },
+                    ],
+                }
+            ],
+        }
+    ]
+    assert use_case.exams.items == []
+    assert use_case.questions.items == []
+    assert use_case.exam_questions.items == []
+    assert use_case.question_options.items == []
 
 
 def test_rag_rejects_invalid_structured_output_before_persisting() -> None:

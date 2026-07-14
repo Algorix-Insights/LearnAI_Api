@@ -63,6 +63,23 @@ def test_atomic_generation_rejects_null_collections() -> None:
     assert "OR p_questions IS NULL" in migration
 
 
+def test_atomic_exam_generation_materializes_ids_and_relations() -> None:
+    migration = _sql("20260713001000_atomic_rag_generation.sql")
+    function = migration[
+        migration.index("CREATE OR REPLACE FUNCTION public.persist_generated_exam(") :
+        migration.index(
+            "REVOKE ALL ON FUNCTION public.persist_generated_flashcards(",
+        )
+    ]
+
+    assert "RETURNING * INTO created_exam" in function
+    assert "RETURNING question_id INTO created_question_id" in function
+    assert "VALUES (created_exam.exam_id, created_question_id, question_order, 1)" in function
+    assert "VALUES (\n                created_question_id," in function
+    assert "RETURNING option_id INTO created_option_id" in function
+    assert "'exam_id', created_exam.exam_id" in function
+
+
 def test_flashcard_listing_never_exposes_exam_answer_keys() -> None:
     migration = _sql("20260713001000_atomic_rag_generation.sql")
     listing = migration[
