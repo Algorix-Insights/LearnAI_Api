@@ -12,9 +12,12 @@ from app.core.middlewares import ApiQueryMiddleware, SecurityMiddleware
 
 
 async def api_error_handler(_: object, exc: ApiError) -> JSONResponse:
+    detail = exc.message
+    if exc.__cause__ is not None and str(exc.__cause__) not in detail:
+        detail = f"{detail} [Causa interna: {type(exc.__cause__).__name__}: {exc.__cause__}]"
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.message},
+        content={"detail": detail},
         headers=exc.headers,
     )
 
