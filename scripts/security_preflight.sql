@@ -41,6 +41,30 @@ WHERE policy.schemaname = 'public'
   AND policy.policyname NOT LIKE 'learnia\_%' ESCAPE '\'
 ORDER BY policy.tablename, policy.policyname;
 
+-- Missing expected policies are as dangerous as unexpected permissive ones.
+-- This catches partially bootstrapped environments where RLS is enabled but
+-- every authenticated operation is denied because no policy was installed.
+WITH expected_policy(table_name, policy_name) AS (
+    VALUES
+        ('tags', 'learnia_tags_available_select'),
+        ('tags', 'learnia_tags_owner_insert'),
+        ('notebook_tags', 'learnia_notebook_tags_member_select'),
+        ('notebook_tags', 'learnia_notebook_tags_manager_insert'),
+        ('notebook_tags', 'learnia_notebook_tags_manager_delete')
+)
+SELECT
+    expected.table_name,
+    expected.policy_name AS missing_policy
+FROM expected_policy AS expected
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_policies AS policy
+    WHERE policy.schemaname = 'public'
+      AND policy.tablename = expected.table_name
+      AND policy.policyname = expected.policy_name
+)
+ORDER BY expected.table_name, expected.policy_name;
+
 -- Storage is shared infrastructure. Review every policy manually; do not drop
 -- policies for unrelated buckets merely because LearnIA does not recognize them.
 SELECT

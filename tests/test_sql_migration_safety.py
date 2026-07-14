@@ -184,6 +184,42 @@ def test_new_user_general_tag_trigger_is_idempotent_and_notebook_independent() -
     assert "public.notebook_tags" not in migration
 
 
+def test_notebook_tag_rls_repair_is_idempotent_and_owner_scoped() -> None:
+    migration = _sql("20260713001500_repair_notebook_tags_rls.sql")
+
+    for helper in (
+        "current_user_is_active",
+        "current_user_is_notebook_member",
+        "current_user_can_manage_notebook",
+    ):
+        assert f"CREATE OR REPLACE FUNCTION public.{helper}" in migration
+        assert f"REVOKE ALL ON FUNCTION public.{helper}(" in migration
+
+    assert migration.count("SECURITY DEFINER") == 3
+    assert migration.count("SET search_path = ''") == 3
+    assert "ALTER TABLE public.notebook_tags ENABLE ROW LEVEL SECURITY" in migration
+    assert "learnia_notebook_tags_member_select" in migration
+    assert "learnia_notebook_tags_manager_insert" in migration
+    assert "learnia_notebook_tags_manager_delete" in migration
+    assert "public.current_user_can_manage_notebook(notebook_id)" in migration
+    assert "available_tag.status = 'active'" in migration
+    assert "available_tag.created_by_user_id = (SELECT auth.uid())" in migration
+    assert "REVOKE ALL PRIVILEGES ON TABLE public.notebook_tags" in migration
+    assert "GRANT INSERT (notebook_id, tag_id)" in migration
+
+
+def test_security_preflight_detects_missing_tag_policies() -> None:
+    preflight = (
+        Path(__file__).parents[1] / "scripts" / "security_preflight.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "expected_policy(table_name, policy_name)" in preflight
+    assert "learnia_notebook_tags_member_select" in preflight
+    assert "learnia_notebook_tags_manager_insert" in preflight
+    assert "learnia_notebook_tags_manager_delete" in preflight
+    assert "missing_policy" in preflight
+
+
 def test_attempt_finalization_verifies_the_graded_answer_snapshot() -> None:
     migration = _sql("20260713000600_exam_attempt_workflow.sql")
 

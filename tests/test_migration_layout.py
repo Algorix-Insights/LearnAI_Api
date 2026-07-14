@@ -6,7 +6,7 @@ def test_supabase_migrations_use_unique_timestamp_versions() -> None:
     files = sorted(migration_dir.glob("*.sql"))
     versions = [file.name.split("_", 1)[0] for file in files]
 
-    assert len(files) == 14
+    assert len(files) == 15
     assert len(versions) == len(set(versions))
     assert versions == sorted(versions)
     assert all(len(version) == 14 and version.isdigit() for version in versions)
