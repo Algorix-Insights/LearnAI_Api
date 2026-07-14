@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, NoReturn, Protocol, TypeVar, cast
 
 from app.application.interfaces import (
     ChatCompletionPayload,
@@ -23,6 +24,7 @@ from app.core.exceptions import AiServiceUnavailableError
 
 SdkFactory = Callable[..., AbstractContextManager[Any]]
 PayloadT = TypeVar("PayloadT", bound=Mapping[str, Any])
+logger = logging.getLogger("uvicorn.error.learnia.ai")
 
 
 class OpenRouterClientError(Exception):
@@ -128,7 +130,11 @@ class OpenRouterClient:
         except (AiServiceUnavailableError, OpenRouterClientError):
             raise
         except Exception as exc:
-            raise AiServiceUnavailableError() from exc
+            self._raise_service_unavailable(
+                operation="chat_completion",
+                model=payload.get("model"),
+                exc=exc,
+            )
 
     def _embeddings(self, payload: EmbeddingPayload) -> OpenRouterEmbeddingResponse:
         try:
@@ -137,7 +143,11 @@ class OpenRouterClient:
         except (AiServiceUnavailableError, OpenRouterClientError):
             raise
         except Exception as exc:
-            raise AiServiceUnavailableError() from exc
+            self._raise_service_unavailable(
+                operation="embeddings",
+                model=payload.get("model"),
+                exc=exc,
+            )
 
     def _embedding_models(
         self, payload: EmbeddingModelsPayload
@@ -148,7 +158,31 @@ class OpenRouterClient:
         except (AiServiceUnavailableError, OpenRouterClientError):
             raise
         except Exception as exc:
-            raise AiServiceUnavailableError() from exc
+            self._raise_service_unavailable(
+                operation="embedding_models",
+                model=None,
+                exc=exc,
+            )
+
+    @staticmethod
+    def _raise_service_unavailable(
+        *,
+        operation: str,
+        model: JsonValue | None,
+        exc: Exception,
+    ) -> NoReturn:
+        upstream_status = getattr(exc, "status_code", None)
+        if not isinstance(upstream_status, int):
+            upstream_status = None
+        safe_model = model if isinstance(model, str) else "default"
+        logger.warning(
+            "openrouter_request_failed operation=%s model=%s upstream_status=%s error_type=%s",
+            operation,
+            safe_model,
+            upstream_status if upstream_status is not None else "unknown",
+            type(exc).__name__,
+        )
+        raise AiServiceUnavailableError() from exc
 
     def _open_router(self) -> AbstractContextManager[_OpenRouterSdk]:
         if not self.config.api_key:

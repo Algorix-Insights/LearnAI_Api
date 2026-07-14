@@ -684,6 +684,30 @@ def test_rag_generates_exam_with_all_question_types_and_persists_relations() -> 
         for question in response.data.questions
         for option in question.options
     )
+    schema = llm.chat_payloads[0]["response_format"]["json_schema"]["schema"]
+    nodes: list[dict[str, Any]] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            nodes.append(value)
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(schema)
+    assert all("oneOf" not in node for node in nodes)
+    assert all("discriminator" not in node for node in nodes)
+    object_nodes = [node for node in nodes if node.get("type") == "object"]
+    assert object_nodes
+    assert all(node.get("additionalProperties") is False for node in object_nodes)
+    assert all(
+        set(node.get("required", [])) == set(node.get("properties", {}))
+        for node in object_nodes
+    )
+    question_items = schema["properties"]["questions"]["items"]
+    assert len(question_items["anyOf"]) == 3
 
 
 def test_rag_exam_endpoint_path_uses_atomic_persistence_payload() -> None:

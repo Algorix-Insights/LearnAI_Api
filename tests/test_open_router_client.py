@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import AbstractContextManager
 from typing import Any
 
@@ -197,11 +198,17 @@ def test_open_router_client_serializes_pydantic_sdk_response() -> None:
     assert response == {"choices": [{"message": {"content": "respuesta"}}]}
 
 
-def test_open_router_client_maps_payment_required_to_safe_service_error() -> None:
+def test_open_router_client_maps_payment_required_to_safe_service_error(caplog) -> None:
     client = OpenRouterClient("test-key", sdk_factory=FakePaymentRequiredOpenRouter)
 
-    with pytest.raises(AiServiceUnavailableError) as captured:
-        run_async(client.chat_completion(messages=[{"role": "user", "content": "Hola"}]))
+    with caplog.at_level(logging.WARNING, logger="uvicorn.error.learnia.ai"):
+        with pytest.raises(AiServiceUnavailableError) as captured:
+            run_async(
+                client.chat_completion(
+                    model="openai/gpt-5.2",
+                    messages=[{"role": "user", "content": "Hola"}],
+                )
+            )
 
     error = captured.value
     assert error.status_code == 503
@@ -209,3 +216,9 @@ def test_open_router_client_maps_payment_required_to_safe_service_error() -> Non
     assert isinstance(error.__cause__, PaymentRequiredResponseError)
     assert "credits" not in error.message
     assert "2116" not in error.message
+    assert "operation=chat_completion" in caplog.text
+    assert "model=openai/gpt-5.2" in caplog.text
+    assert "upstream_status=402" in caplog.text
+    assert "error_type=PaymentRequiredResponseError" in caplog.text
+    assert "secret credits" not in caplog.text
+    assert "2116" not in caplog.text
