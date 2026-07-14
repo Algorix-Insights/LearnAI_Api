@@ -782,9 +782,9 @@ def test_rag_exam_endpoint_path_uses_atomic_persistence_payload() -> None:
     ("true_false_count", "multiple_choice_count", "open_count", "expected"),
     [
         (1, 0, 0, 580),
-        (1, 1, 1, 840),
-        (3, 4, 3, 1660),
-        (0, 10, 10, 2000),
+        (1, 1, 1, 1030),
+        (3, 4, 3, 2290),
+        (0, 10, 10, 4096),
     ],
 )
 def test_rag_exam_output_budget_scales_without_requesting_unaffordable_maximum(
