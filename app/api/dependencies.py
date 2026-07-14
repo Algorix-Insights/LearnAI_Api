@@ -30,7 +30,7 @@ from app.application.usecases import (
 from app.application.usecases.exam_attempts import ExamAttemptWorkflowUseCase
 from app.application.usecases.user_profile import UserProfileUseCase
 from app.application.usecases.user_statistics import UserStatisticsUseCase
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.exceptions import AuthUnavailableError, UnauthorizedError
 from app.domain.schemas.resources.users import UserRead
 from app.infra.agents.answer_verifier import OpenRouterAnswerVerifier
@@ -72,6 +72,12 @@ from app.infra.storage import SupabaseStorage
 
 bearer_scheme = HTTPBearer(auto_error=False)
 logger = logging.getLogger("learnia.auth")
+
+
+def _ai_usage_repository(client: Client, settings: Settings) -> AiUsageRepository | None:
+    if not settings.ai_usage_quota_enabled:
+        return None
+    return AiUsageRepository(client)
 
 
 def get_user_data_client(
@@ -146,7 +152,7 @@ def get_exam_attempt_workflow_use_case() -> ExamAttemptWorkflowUseCase:
     return ExamAttemptWorkflowUseCase(
         AttemptRepository(admin),
         open_answer_verifier=verifier,
-        usage=AiUsageRepository(admin),
+        usage=_ai_usage_repository(admin, settings),
     )
 
 
@@ -254,6 +260,7 @@ def get_rag_use_case() -> RagUseCase:
     # Generation spans multiple internal tables and currently uses service-only
     # repositories. Every public method first checks the JWT-derived actor against
     # notebook ownership/membership; generic CRUD uses request-scoped RLS clients.
+    settings = get_settings()
     admin = get_supabase_admin_client()
     return RagUseCase(
         documents=DocumentRepository(admin),
@@ -268,9 +275,9 @@ def get_rag_use_case() -> RagUseCase:
         access=NotebookAccessRepository(admin),
         storage=SupabaseStorage(admin),
         llm=_openrouter_client(),
-        settings=get_settings(),
+        settings=settings,
         generation=RagGenerationRepository(admin),
-        usage=AiUsageRepository(admin),
+        usage=_ai_usage_repository(admin, settings),
     )
 
 

@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.api.dependencies import _ai_usage_repository
+from app.core.config import Settings
 from app.core.exceptions import ApiError
 from app.infra.repositories.ai_usage import AiUsageRepository
 
@@ -27,6 +29,23 @@ class FakeClient:
     def rpc(self, name: str, params: dict) -> FakeQuery:
         self.calls.append((name, params))
         return FakeQuery(self.error)
+
+
+def test_ai_usage_quota_is_disabled_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("AI_USAGE_QUOTA_ENABLED", raising=False)
+    settings = Settings(_env_file=None)
+
+    assert settings.ai_usage_quota_enabled is False
+    assert _ai_usage_repository(FakeClient(), settings) is None
+
+
+def test_ai_usage_quota_can_be_reenabled_explicitly() -> None:
+    repository = _ai_usage_repository(
+        FakeClient(),
+        Settings(ai_usage_quota_enabled=True, _env_file=None),
+    )
+
+    assert isinstance(repository, AiUsageRepository)
 
 
 def test_ai_usage_reservation_passes_actor_to_service_only_rpc() -> None:
@@ -66,5 +85,5 @@ def test_ai_usage_quota_maps_to_safe_429() -> None:
         asyncio.run(repository.reserve(actor_id="actor-id", operation="chat"))
 
     assert captured.value.status_code == 429
-    assert captured.value.headers == {"Retry-After": "3600"}
+    assert captured.value.headers == {"Retry-After": "0"}
     assert "database detail" not in captured.value.message

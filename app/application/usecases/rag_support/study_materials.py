@@ -84,7 +84,7 @@ class RagStudyMaterialWorkflow:
             schema=FlashcardDraftSet,
             schema_name="notebook_flashcards",
             model=model,
-            max_tokens=min(4500, 500 + request.count * 180),
+            max_tokens=10000,
             instruction=(
                 f"Genera exactamente {request.count} flashcards distintas. "
                 "Cada pregunta debe poder responderse solo con el contexto y cada respuesta "
@@ -172,12 +172,11 @@ class RagStudyMaterialWorkflow:
             notebook_id=notebook_id,
             purpose="conceptos, relaciones y detalles evaluables para crear un examen",
         )
-        total = request.true_false_count + request.multiple_choice_count + request.open_count
         draft = await self.llm.structured_completion(
             schema=ExamDraft,
             schema_name="notebook_exam",
             model=model,
-            max_tokens=min(7000, 800 + total * 300),
+            max_tokens=10000,
             instruction=(
                 f"Genera un examen con exactamente {request.true_false_count} preguntas "
                 f"true_false, {request.multiple_choice_count} multiple_choice y "

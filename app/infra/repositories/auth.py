@@ -140,16 +140,20 @@ class SupabaseAuthRepository(AuthRepository):
 
     async def verify_otp(self, request: AuthVerifyOtpRequest) -> dict:
         try:
+            payload: dict[str, Any] = {"type": request.type}
+            if request.token_hash:
+                payload["token_hash"] = request.token_hash
+                if request.email:
+                    payload["email"] = request.email
+            else:
+                payload["email"] = request.email
+                payload["token"] = request.token
+            if request.captcha_token:
+                payload["options"] = {"captcha_token": request.captcha_token}
+
             response = await asyncio.to_thread(
                 self.client.auth.verify_otp,
-                {
-                    "email": request.email,
-                    "token": request.token,
-                    "type": request.type,
-                    "options": {
-                        "captcha_token": request.captcha_token,
-                    },
-                },
+                payload,
             )
             return self._format_auth_response(response)
         except ApiError:
@@ -267,6 +271,14 @@ class SupabaseAuthRepository(AuthRepository):
         if operation == "login":
             raise InvalidCredentialsError() from exc
         if operation == "verify-otp":
+            if code == "otp_expired":
+                raise UnauthorizedError(
+                    "El código OTP es incorrecto, expiró o ya fue utilizado. Solicita uno nuevo."
+                ) from exc
+            if code in {"flow_state_expired", "flow_state_not_found"}:
+                raise UnauthorizedError(
+                    "El enlace de acceso expiró o ya fue utilizado. Solicita uno nuevo."
+                ) from exc
             raise UnauthorizedError("Código o token inválido o expirado.") from exc
         if operation in {"update-password", "get-user", "logout"} and status in {
             400,

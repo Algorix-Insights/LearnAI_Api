@@ -33,7 +33,7 @@ class AiUsageRepository(BaseSupabaseRepository):
                 raise ApiError(
                     429,
                     "Alcanzaste el límite temporal de operaciones de IA.",
-                    headers={"Retry-After": "3600"},
+                    headers={"Retry-After": "0"},
                 ) from exc
             if "invalid ai operation" in message or "invalid ai units" in message:
                 raise BadRequestError("Operación de IA inválida.") from exc

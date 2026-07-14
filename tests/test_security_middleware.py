@@ -67,7 +67,11 @@ def test_cors_headers_are_present_on_auth_route_errors() -> None:
 
     assert response.status_code == 422
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
-    assert response.headers["access-control-expose-headers"] == "X-Request-ID"
+    exposed_headers = {
+        header.strip().lower()
+        for header in response.headers["access-control-expose-headers"].split(",")
+    }
+    assert exposed_headers == {"x-request-id", "retry-after"}
 
 
 def test_cors_does_not_allow_an_unknown_origin() -> None:
