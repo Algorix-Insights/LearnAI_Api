@@ -14,7 +14,7 @@ class RagDocumentProcessor:
     allowed_extensions = {".pdf", ".txt", ".md"}
     source_types = {".pdf": "pdf", ".txt": "txt", ".md": "markdown"}
     max_size_bytes = 10 * 1024 * 1024
-    max_pdf_pages = 200
+    max_pdf_pages = 600
 
     async def read_upload(self, file: UploadFile) -> tuple[bytes, str, str]:
         filename = file.filename or ""
