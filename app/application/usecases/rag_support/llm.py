@@ -14,6 +14,50 @@ from app.infra.repositories.rag import RagSearchRepository
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
+
+def _prepare_openai_schema(schema: dict) -> dict:
+    defs = schema.pop("$defs", {})
+    result = _resolve_refs(schema, defs)
+    result = _fix_openai(result)
+    return result
+
+
+def _resolve_refs(node: Any, defs: dict) -> Any:
+    if isinstance(node, dict):
+        if "$ref" in node:
+            key = node["$ref"].rsplit("/", 1)[-1]
+            resolved = dict(defs.get(key, node))
+            return _resolve_refs(resolved, defs)
+        return {k: _resolve_refs(v, defs) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_resolve_refs(item, defs) for item in node]
+    return node
+
+
+def _fix_openai(node: Any) -> Any:
+    if isinstance(node, dict):
+        result = {}
+        for k, v in node.items():
+            if k == "const" and isinstance(v, str):
+                result["enum"] = [v]
+            elif k == "anyOf" and isinstance(v, list):
+                non_null = [item for item in v if isinstance(item, dict) and item.get("type") != "null"]
+                if len(non_null) == 1:
+                    result.update(_fix_openai(non_null[0]))
+                else:
+                    result[k] = [_fix_openai(item) for item in non_null]
+            elif k == "discriminator" and isinstance(v, dict):
+                cleaned = {sk: sv for sk, sv in v.items() if sk != "mapping"}
+                if cleaned:
+                    result[k] = cleaned
+            else:
+                result[k] = _fix_openai(v)
+        return result
+    if isinstance(node, list):
+        return [_fix_openai(item) for item in node]
+    return node
+
+
 EMBEDDING_BATCH_SIZE = 32
 MAX_RAG_CONTEXT_CHARS = 30_000
 MAX_SOURCE_CHARS = 5_000
@@ -87,6 +131,8 @@ class RagLlmService:
                 "content": f"Instruccion:\n{instruction}\n\nContexto:\n{self.context(sources)}",
             },
         ]
+        raw_schema = schema.model_json_schema()
+        safe_schema = _prepare_openai_schema(raw_schema)
         response = await self.llm.chat_completion(
             model=model,
             messages=messages,
@@ -97,7 +143,7 @@ class RagLlmService:
                 "json_schema": {
                     "name": schema_name,
                     "strict": True,
-                    "schema": schema.model_json_schema(),
+                    "schema": safe_schema,
                 },
             },
         )

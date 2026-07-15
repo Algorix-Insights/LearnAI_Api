@@ -245,7 +245,7 @@ ExamQuestionDraft = Annotated[
 
 class ExamDraft(RagSchema):
     title: str = Field(min_length=1, max_length=160)
-    description: str | None = Field(max_length=1000)
+    description: str | None = Field(default=None, max_length=1000)
     questions: list[ExamQuestionDraft] = Field(min_length=1, max_length=20)
 
     @model_validator(mode="after")
