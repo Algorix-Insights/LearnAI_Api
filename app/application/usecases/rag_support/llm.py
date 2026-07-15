@@ -38,6 +38,8 @@ def _fix_openai(node: Any) -> Any:
     if isinstance(node, dict):
         result = {}
         for k, v in node.items():
+            if k == "default":
+                continue
             if k == "const" and isinstance(v, str):
                 result["enum"] = [v]
             elif k == "anyOf" and isinstance(v, list):
