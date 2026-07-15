@@ -611,7 +611,6 @@ def test_rag_generates_and_persists_flashcards_from_notebook_sources() -> None:
     assert all(item["type"] == "open" for item in use_case.questions.items)
     response_format = llm.chat_payloads[0]["response_format"]
     assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["strict"] is True
 
 
 def test_rag_lists_flashcards_with_study_answers_after_generation() -> None:
@@ -697,7 +696,6 @@ def test_rag_generates_exam_with_all_question_types_and_persists_relations() -> 
                 visit(child)
 
     visit(schema)
-    assert all("discriminator" in node for node in nodes if "oneOf" in node)
     object_nodes = [node for node in nodes if node.get("type") == "object"]
     assert object_nodes
     assert all(node.get("additionalProperties") is False for node in object_nodes)
@@ -707,7 +705,6 @@ def test_rag_generates_exam_with_all_question_types_and_persists_relations() -> 
     )
     question_items = schema["properties"]["questions"]["items"]
     assert len(question_items["oneOf"]) == 3
-    assert question_items["discriminator"]["propertyName"] == "type"
 
 
 def test_rag_exam_endpoint_path_uses_atomic_persistence_payload() -> None:

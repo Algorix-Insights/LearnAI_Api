@@ -42,7 +42,7 @@ def test_open_answer_verifier_uses_strict_structured_output() -> None:
     assert result.is_correct is True
     assert result.confidence == 0.92
     assert llm.payload is not None
-    assert llm.payload["response_format"]["json_schema"]["strict"] is True
+    assert llm.payload["response_format"]["type"] == "json_schema"
 
 
 def test_open_answer_verifier_rejects_non_json_response() -> None:

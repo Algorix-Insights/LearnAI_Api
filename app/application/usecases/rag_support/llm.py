@@ -48,10 +48,8 @@ def _fix_openai(node: Any) -> Any:
                     result.update(_fix_openai(non_null[0]))
                 else:
                     result[k] = [_fix_openai(item) for item in non_null]
-            elif k == "discriminator" and isinstance(v, dict):
-                cleaned = {sk: sv for sk, sv in v.items() if sk != "mapping"}
-                if cleaned:
-                    result[k] = cleaned
+            elif k == "discriminator":
+                continue
             else:
                 result[k] = _fix_openai(v)
         return result
@@ -144,7 +142,6 @@ class RagLlmService:
                 "type": "json_schema",
                 "json_schema": {
                     "name": schema_name,
-                    "strict": True,
                     "schema": safe_schema,
                 },
             },

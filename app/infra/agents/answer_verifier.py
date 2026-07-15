@@ -63,7 +63,6 @@ class OpenRouterAnswerVerifier(OpenAnswerVerifier):
                 "type": "json_schema",
                 "json_schema": {
                     "name": "open_answer_verification",
-                    "strict": True,
                     "schema": _VerificationPayload.model_json_schema(),
                 },
             },
