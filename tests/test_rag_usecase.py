@@ -784,7 +784,7 @@ def test_rag_exam_endpoint_path_uses_atomic_persistence_payload() -> None:
         (1, 0, 0, 580),
         (1, 1, 1, 1030),
         (3, 4, 3, 2290),
-        (0, 10, 10, 4096),
+        (0, 10, 10, 2000),
     ],
 )
 def test_rag_exam_output_budget_scales_without_requesting_unaffordable_maximum(

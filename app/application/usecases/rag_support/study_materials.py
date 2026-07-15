@@ -45,7 +45,7 @@ EXAM_BASE_OUTPUT_TOKENS = 500
 EXAM_TRUE_FALSE_OUTPUT_TOKENS = 80
 EXAM_MULTIPLE_CHOICE_OUTPUT_TOKENS = 200
 EXAM_OPEN_OUTPUT_TOKENS = 250
-MAX_EXAM_OUTPUT_TOKENS = 4_096
+MAX_EXAM_OUTPUT_TOKENS = 2_000
 
 
 class RagStudyMaterialWorkflow:
@@ -90,7 +90,7 @@ class RagStudyMaterialWorkflow:
             schema=FlashcardDraftSet,
             schema_name="notebook_flashcards",
             model=model,
-            max_tokens=10000,
+            max_tokens=2000,
             instruction=(
                 f"Genera exactamente {request.count} flashcards distintas. "
                 "Cada pregunta debe poder responderse solo con el contexto y cada respuesta "

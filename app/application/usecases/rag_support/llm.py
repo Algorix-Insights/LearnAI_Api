@@ -164,7 +164,7 @@ class RagLlmService:
             model=self.resolve_model(model),
             messages=messages,
             temperature=0.2,
-            max_tokens=5000,
+            max_tokens=2000,
         )
         return self.chat_content(response)
 
