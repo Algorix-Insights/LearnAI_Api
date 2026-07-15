@@ -37,9 +37,8 @@ class RagLlmService:
         self.settings = settings
 
     def resolve_model(self, requested: str | None) -> str:
-        configured = getattr(self.settings, "active_chat_model", self.settings.openrouter_chat_model)
-        allowed = {configured, self.settings.openrouter_chat_model, getattr(self.settings, "gemini_chat_model", configured)}
-        if requested is not None and requested not in allowed:
+        configured = self.settings.openrouter_chat_model
+        if requested is not None and requested != configured:
             raise BadRequestError("El modelo solicitado no esta permitido.")
         return configured
 
@@ -118,9 +117,8 @@ class RagLlmService:
         embeddings: list[list[float]] = []
         for offset in range(0, len(texts), EMBEDDING_BATCH_SIZE):
             batch = list(texts[offset : offset + EMBEDDING_BATCH_SIZE])
-            model = getattr(self.settings, "active_embedding_model", self.settings.openrouter_embedding_model)
             response = await self.llm.embeddings(
-                model=model,
+                model=self.settings.openrouter_embedding_model,
                 input=batch,
             )
             data = self.response_data(response)

@@ -1,5 +1,4 @@
-from app.application.interfaces.ai_gateway import (
-    AiGateway,
+from app.application.interfaces.open_router import (
     ChatCompletionPayload,
     EmbeddingInput,
     EmbeddingModelsPayload,
@@ -21,7 +20,6 @@ from app.application.interfaces.open_answer_verifier import (
 )
 
 __all__ = [
-    "AiGateway",
     "ChatCompletionPayload",
     "EmbeddingInput",
     "EmbeddingModelsPayload",

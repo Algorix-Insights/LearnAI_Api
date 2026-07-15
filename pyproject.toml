@@ -16,7 +16,6 @@ dependencies = [
   "pydantic-settings>=2.4",
   "openrouter",
   "supabase",
-  "google-genai>=0.1.0",
 ]
 
 [project.optional-dependencies]
